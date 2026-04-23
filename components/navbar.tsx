@@ -3,10 +3,11 @@
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, usePathname } from "next/navigation";
 import { toast } from "sonner";
-import { Command, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
 import type { UserRole } from "@/lib/types/database";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useState, useRef, useEffect } from "react";
+import Image from "next/image";
 
 interface NavbarProps {
   fullName: string;
@@ -50,7 +51,7 @@ export function Navbar({ fullName, role }: NavbarProps) {
     <div className="border-b bg-background relative z-50">
       <div className="flex h-16 items-center px-4 md:px-6">
         <div className="flex items-center gap-2 font-semibold">
-          <Command className="h-5 w-5" />
+          <Image src="/favicon.svg" alt="ideasprint logo" width={22} height={22} className="shrink-0" />
           <span className="hidden sm:inline-block">ideasprint 2026</span>
         </div>
         
