@@ -9,11 +9,12 @@ export default async function AdminDashboardPage() {
     .select("*")
     .order("created_at", { ascending: false });
 
-  // Fetch all evaluations with criteria names — include rubric_criterion_id for dedup
+  // Fetch all evaluations with criteria names — include evaluator_id and rubric_criterion_id
   const { data: evaluations } = await supabase
     .from("evaluations")
     .select(`
       proposal_id,
+      evaluator_id,
       rubric_criterion_id,
       score,
       rubric_criteria (
@@ -58,17 +59,29 @@ export default async function AdminDashboardPage() {
     }
   }
 
-  // Fetch evaluators for the assigned column
+  // Fetch all profiles (for assigned column and "evaluated by" pill)
   const { data: evaluators } = await supabase
     .from("profiles")
     .select("id, full_name")
     .eq("role", "evaluator");
+
+  // Build a map: proposalId -> evaluator full_name
+  const evaluatorByProposal: Record<string, string> = {};
+  if (evaluations && evaluators) {
+    for (const ev of evaluations) {
+      if (!evaluatorByProposal[ev.proposal_id]) {
+        const profile = evaluators.find((p) => p.id === ev.evaluator_id);
+        if (profile) evaluatorByProposal[ev.proposal_id] = profile.full_name;
+      }
+    }
+  }
 
   return (
     <AdminDashboardClient
       proposals={proposals ?? []}
       breakdownData={breakdownData}
       evaluators={evaluators ?? []}
+      evaluatorByProposal={evaluatorByProposal}
     />
   );
 }

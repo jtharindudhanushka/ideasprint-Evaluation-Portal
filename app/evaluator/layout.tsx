@@ -25,7 +25,7 @@ export default async function EvaluatorLayout({
   return (
     <div className="flex min-h-screen flex-col">
       <Navbar fullName={profile.full_name} role={profile.role} />
-      <main className="flex-1 space-y-4 p-8 pt-6">
+      <main className="flex-1 space-y-4 p-4 sm:p-6 md:p-8 pt-4 sm:pt-6">
         {children}
       </main>
     </div>

@@ -16,7 +16,7 @@ export default async function EvaluatorDashboardPage() {
     .select("*")
     .order("created_at", { ascending: false });
 
-  // Fetch only this evaluator's own evaluations for the breakdown popup
+  // Fetch all evaluations (with evaluator_id) for the breakdown popup & "evaluated by" info
   const { data: evaluations } = await supabase
     .from("evaluations")
     .select(`
@@ -67,8 +67,19 @@ export default async function EvaluatorDashboardPage() {
     }
   }
 
-  // Fetch profiles for lock info
+  // Fetch profiles for lock info and "evaluated by" pill
   const { data: profiles } = await supabase.from("profiles").select("id, full_name");
+
+  // Build a map: proposalId -> evaluator full_name (from the evaluator_id in evaluations)
+  const evaluatorByProposal: Record<string, string> = {};
+  if (evaluations && profiles) {
+    for (const ev of evaluations) {
+      if (!evaluatorByProposal[ev.proposal_id]) {
+        const profile = profiles.find((p) => p.id === ev.evaluator_id);
+        if (profile) evaluatorByProposal[ev.proposal_id] = profile.full_name;
+      }
+    }
+  }
 
   return (
     <EvaluatorDashboardClient
@@ -77,6 +88,7 @@ export default async function EvaluatorDashboardPage() {
       gradedProposalIds={gradedProposalIds}
       profiles={profiles ?? []}
       breakdownData={breakdownData}
+      evaluatorByProposal={evaluatorByProposal}
       serverNow={new Date().toISOString()}
     />
   );

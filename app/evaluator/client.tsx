@@ -54,6 +54,7 @@ interface Props {
   gradedProposalIds: string[];
   profiles: Pick<Profile, "id" | "full_name">[];
   breakdownData?: Record<string, any[]>;
+  evaluatorByProposal?: Record<string, string>;
   serverNow?: string;
 }
 
@@ -63,6 +64,7 @@ export function EvaluatorDashboardClient({
   gradedProposalIds,
   profiles,
   breakdownData = {},
+  evaluatorByProposal = {},
   serverNow,
 }: Props) {
   const router = useRouter();
@@ -149,6 +151,7 @@ export function EvaluatorDashboardClient({
   ) => {
     const isGradedByMe = gradedProposalIds.includes(proposal.id);
     const marks = breakdownData[proposal.id] || [];
+    const evaluatedBy = evaluatorByProposal[proposal.id];
 
     return (
       <Dialog>
@@ -164,6 +167,13 @@ export function EvaluatorDashboardClient({
               <span>Total Score</span>
               <span className="text-xl font-bold">{proposal.total_score}/100</span>
             </div>
+
+            {evaluatedBy && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Evaluated by</span>
+                <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">{evaluatedBy}</span>
+              </div>
+            )}
 
             {marks.length > 0 ? (
               <div className="space-y-2 border rounded-lg p-3">
@@ -239,7 +249,7 @@ export function EvaluatorDashboardClient({
         </div>
 
         {/* Quick Stats */}
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid grid-cols-3 gap-3 sm:gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">My Assignments</CardTitle>
@@ -272,9 +282,9 @@ export function EvaluatorDashboardClient({
         </div>
 
         {/* Split View */}
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid gap-6 xl:grid-cols-3">
           {/* LEFT: My Assignments + All Proposals stacked */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="xl:col-span-2 space-y-6">
 
             {/* Table 1: My Assignments */}
             <Card>
@@ -324,7 +334,8 @@ export function EvaluatorDashboardClient({
                   </div>
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-0 sm:px-6">
+                <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -471,6 +482,7 @@ export function EvaluatorDashboardClient({
                     )}
                   </TableBody>
                 </Table>
+                </div>
               </CardContent>
             </Card>
 
@@ -496,20 +508,22 @@ export function EvaluatorDashboardClient({
                   </div>
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-0 sm:px-6">
+                <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Team &amp; Product</TableHead>
                       <TableHead>Assigned To</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Score / Breakdown</TableHead>
+                      <TableHead className="text-right">Marks</TableHead>
+                      <TableHead className="text-right">Breakdown</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredAll.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={4} className="h-24 text-center">
+                        <TableCell colSpan={5} className="h-24 text-center">
                           No proposals found.
                         </TableCell>
                       </TableRow>
@@ -553,12 +567,19 @@ export function EvaluatorDashboardClient({
                                   : "Unassigned"}
                               </Badge>
                             </TableCell>
+                            <TableCell className="text-right font-medium">
+                              {proposal.is_graded ? (
+                                <span className="font-bold">{proposal.total_score}<span className="text-muted-foreground font-normal text-xs">/100</span></span>
+                              ) : (
+                                <span className="text-sm text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
                             <TableCell className="text-right">
                               {proposal.is_graded ? (
                                 renderBreakdownDialog(
                                   proposal,
-                                  `${proposal.total_score} pts — View`,
-                                  buttonVariants({ variant: "ghost", size: "sm" })
+                                  <span className="inline-flex items-center gap-1"><BarChart className="h-3.5 w-3.5" />View</span>,
+                                  buttonVariants({ variant: "outline", size: "sm" })
                                 )
                               ) : (
                                 <span className="text-sm text-muted-foreground">—</span>
@@ -570,6 +591,7 @@ export function EvaluatorDashboardClient({
                     )}
                   </TableBody>
                 </Table>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -589,19 +611,26 @@ export function EvaluatorDashboardClient({
                     No graded proposals yet.
                   </div>
                 ) : (
-                  topTeams.map((team, index) => (
-                    <div key={team.id} className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                  topTeams.map((team, index) => {
+                    const evaluatedBy = evaluatorByProposal[team.id];
+                    return (
+                    <div key={team.id} className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
                           {index + 1}
                         </div>
-                        <div>
-                          <p className="text-sm font-medium leading-none">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium leading-none truncate">
                             {team.team_name}
                           </p>
+                          {evaluatedBy && (
+                            <span className="mt-1 inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                              {evaluatedBy}
+                            </span>
+                          )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex shrink-0 items-center gap-2">
                         <div className="font-bold">{team.total_score}</div>
                         {renderBreakdownDialog(
                           team,
@@ -614,7 +643,8 @@ export function EvaluatorDashboardClient({
                         )}
                       </div>
                     </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </CardContent>

@@ -37,11 +37,10 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="container relative hidden h-screen flex-col items-center justify-center md:grid lg:max-w-none lg:grid-cols-2 lg:px-0">
+    <div className="min-h-screen flex flex-col lg:flex-row">
 
-      {/* Left side branding / quote — full bleed login image */}
-      <div className="relative hidden h-full flex-col p-10 text-white lg:flex dark:border-r overflow-hidden">
-        {/* Background image */}
+      {/* Left side branding / image — hidden on mobile, shown on lg+ */}
+      <div className="relative hidden lg:flex lg:w-1/2 flex-col p-10 text-white overflow-hidden">
         <Image
           src="/loginimage.jpg"
           alt="ideasprint 2026 background"
@@ -49,78 +48,71 @@ export default function LoginPage() {
           className="object-cover"
           priority
         />
-        {/* Dark overlay */}
         <div className="absolute inset-0 bg-black/60" />
-        {/* Logo top-left */}
         <div className="relative z-20 flex items-center gap-2">
           <Image src="/favicon.svg" alt="ideasprint logo" width={28} height={28} />
           <span className="text-lg font-semibold tracking-tight">ideasprint 2026</span>
         </div>
-        {/* Quote bottom-left */}
         <div className="relative z-20 mt-auto">
           <blockquote className="space-y-2">
-            <p className="text-lg font-medium">
-              The Intra-Departmental Start-Up Challenge.
-            </p>
+            <p className="text-lg font-medium">The Intra-Departmental Start-Up Challenge.</p>
             <footer className="text-sm text-white/70">ideasprint 2026</footer>
           </blockquote>
         </div>
       </div>
 
+      {/* Mobile top branding strip — only shown on small screens */}
+      <div className="lg:hidden flex items-center gap-2 px-6 pt-8 pb-4">
+        <Image src="/favicon.svg" alt="ideasprint logo" width={24} height={24} />
+        <span className="text-base font-semibold tracking-tight">ideasprint 2026</span>
+      </div>
+
       {/* Right side form */}
-      <div className="lg:p-8">
-        <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
+      <div className="flex flex-1 items-center justify-center px-6 py-8 lg:py-0 lg:w-1/2">
+        <div className="w-full max-w-sm space-y-6">
           <div className="flex flex-col space-y-2 text-center">
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Welcome back
-            </h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
             <p className="text-sm text-muted-foreground">
               Enter your email and password to sign in
             </p>
           </div>
 
-          <div className="grid gap-6">
-            <form onSubmit={handleLogin}>
-              <div className="grid gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    placeholder="name@example.com"
-                    type="email"
-                    autoCapitalize="none"
-                    autoComplete="email"
-                    autoCorrect="off"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    disabled={loading}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="password">Password</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    placeholder="Enter your password"
-                    autoComplete="current-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    disabled={loading}
-                  />
-                </div>
-                <Button disabled={loading} type="submit" className="w-full mt-2">
-                  {loading && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  )}
-                  Sign In
-                </Button>
-              </div>
-            </form>
-          </div>
+          <form onSubmit={handleLogin} className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                placeholder="name@example.com"
+                type="email"
+                autoCapitalize="none"
+                autoComplete="email"
+                autoCorrect="off"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                disabled={loading}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Enter your password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                disabled={loading}
+              />
+            </div>
+            <Button disabled={loading} type="submit" className="w-full mt-2">
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Sign In
+            </Button>
+          </form>
 
-          <p className="px-8 text-center text-sm text-muted-foreground">
+          <p className="text-center text-sm text-muted-foreground">
             Access is restricted to authorized panel members.
           </p>
         </div>

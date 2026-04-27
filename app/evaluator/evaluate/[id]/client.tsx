@@ -92,50 +92,7 @@ export function EvaluationViewClient({
     }
   }, [existingEvaluations]);
 
-  // Acquire lock on mount if editing
-  useEffect(() => {
-    if (!isEditing) return;
-
-    const acquireLock = async () => {
-      const serverTime = new Date(serverNow).getTime();
-      const twoHoursAgo = new Date(serverTime - 2 * 60 * 60 * 1000).toISOString();
-      
-      // Update only if lock is available (null, ours, or expired)
-      const { data, error } = await supabase
-        .from("proposals")
-        .update({
-          locked_by: currentUserId,
-          locked_at: serverNow,
-        })
-        .eq("id", proposal.id)
-        .or(`locked_by.is.null,locked_by.eq.${currentUserId},locked_at.lt.${twoHoursAgo}`)
-        .select();
-
-      // If no rows were returned, it means the condition failed (someone else locked it)
-      if (error) {
-        toast.error("Failed to acquire lock.");
-        router.push("/evaluator");
-        return;
-      }
-      
-      if (!data || data.length === 0) {
-        toast.error("This proposal is currently being evaluated by someone else.");
-        router.push("/evaluator");
-      }
-    };
-
-    acquireLock();
-
-    // Release lock on unmount
-    return () => {
-      supabase
-        .from("proposals")
-        .update({ locked_by: null, locked_at: null })
-        .eq("id", proposal.id)
-        .eq("locked_by", currentUserId)
-        .then(() => {});
-    };
-  }, [proposal.id, currentUserId, supabase, isEditing]);
+  // Note: Redundant locking logic removed as assignments are strictly 1-to-1.
 
   const handleScoreChange = useCallback(
     (criterionId: string, value: string, maxScore: number) => {
@@ -177,36 +134,21 @@ export function EvaluationViewClient({
     setLoading(true);
 
     try {
-      // Upsert evaluations for each criterion
+      // Map evaluations for the RPC (proposal_id, evaluator_id handled by RPC)
       const evaluationRows = allCriteria.map((criterion) => ({
-        proposal_id: proposal.id,
-        evaluator_id: currentUserId,
         rubric_criterion_id: criterion.id,
         score: scores[criterion.id] ?? 0,
         notes: notes[criterion.id] || globalNotes || "",
-        updated_at: new Date().toISOString(),
       }));
 
-      const { error: evalError } = await supabase
-        .from("evaluations")
-        .upsert(evaluationRows, {
-          onConflict: "proposal_id,evaluator_id,rubric_criterion_id",
-        });
+      // Atomically submit evaluations and update proposal using RPC
+      const { error: rpcError } = await supabase.rpc("submit_evaluation", {
+        p_proposal_id: proposal.id,
+        p_evaluations: evaluationRows,
+        p_total_score: totalScore,
+      });
 
-      if (evalError) throw evalError;
-
-      // Update proposal: set graded status, total score, clear lock
-      const { error: proposalError } = await supabase
-        .from("proposals")
-        .update({
-          is_graded: true,
-          total_score: totalScore,
-          locked_by: null,
-          locked_at: null,
-        })
-        .eq("id", proposal.id);
-
-      if (proposalError) throw proposalError;
+      if (rpcError) throw rpcError;
 
       toast.success("Evaluation saved successfully!");
       setIsEditing(false); // Switch back to view mode

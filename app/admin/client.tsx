@@ -33,9 +33,10 @@ interface Props {
   proposals: Proposal[];
   breakdownData?: Record<string, any[]>;
   evaluators?: Pick<Profile, "id" | "full_name">[];
+  evaluatorByProposal?: Record<string, string>;
 }
 
-export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators = [] }: Props) {
+export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators = [], evaluatorByProposal = {} }: Props) {
   const [searchQuery, setSearchQuery] = useState("");
 
   const totalProposals = proposals.length;
@@ -79,6 +80,7 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
 
   const renderBreakdownDialog = (proposal: Proposal, triggerContent: React.ReactNode, triggerClassName: string) => {
     const marks = breakdownData[proposal.id] || [];
+    const evaluatedBy = evaluatorByProposal[proposal.id];
 
     return (
       <Dialog>
@@ -94,6 +96,13 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
               <span>Total Score</span>
               <span className="text-xl font-bold">{proposal.total_score}/100</span>
             </div>
+
+            {evaluatedBy && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Evaluated by</span>
+                <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">{evaluatedBy}</span>
+              </div>
+            )}
             
             {marks.length > 0 ? (
               <div className="space-y-2 border rounded-lg p-3">
@@ -262,17 +271,24 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
                   No graded proposals yet.
                 </div>
               ) : (
-                topTeams.map((team, index) => (
-                  <div key={team.id} className="flex items-center justify-between group">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                topTeams.map((team, index) => {
+                  const evaluatedBy = evaluatorByProposal[team.id];
+                  return (
+                  <div key={team.id} className="flex items-center justify-between gap-2 group">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
                         {index + 1}
                       </div>
-                      <div>
-                        <p className="text-sm font-medium leading-none">{team.team_name}</p>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium leading-none truncate">{team.team_name}</p>
+                        {evaluatedBy && (
+                          <span className="mt-1 inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                            {evaluatedBy}
+                          </span>
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex shrink-0 items-center gap-3">
                       <div className="font-bold">{team.total_score}</div>
                       {renderBreakdownDialog(
                         team,
@@ -281,7 +297,8 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
                       )}
                     </div>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </CardContent>
