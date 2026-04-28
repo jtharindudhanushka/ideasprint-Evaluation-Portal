@@ -26,17 +26,18 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import type { Proposal, Profile } from "@/lib/types/database";
+import type { Proposal, Profile, ProposalAssignment } from "@/lib/types/database";
 import Link from "next/link";
 
 interface Props {
   proposals: Proposal[];
   breakdownData?: Record<string, any[]>;
   evaluators?: Pick<Profile, "id" | "full_name">[];
-  evaluatorByProposal?: Record<string, string>;
+  evaluatorByProposal?: Record<string, string[]>;
+  assignments?: ProposalAssignment[];
 }
 
-export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators = [], evaluatorByProposal = {} }: Props) {
+export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators = [], evaluatorByProposal = {}, assignments = [] }: Props) {
   const [searchQuery, setSearchQuery] = useState("");
 
   const totalProposals = proposals.length;
@@ -80,7 +81,7 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
 
   const renderBreakdownDialog = (proposal: Proposal, triggerContent: React.ReactNode, triggerClassName: string) => {
     const marks = breakdownData[proposal.id] || [];
-    const evaluatedBy = evaluatorByProposal[proposal.id];
+    const evaluatedByList = evaluatorByProposal[proposal.id] || [];
 
     return (
       <Dialog>
@@ -93,20 +94,26 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="flex items-center justify-between font-medium bg-muted/50 p-3 rounded-lg">
-              <span>Total Score</span>
+              <span>Total Score (Average)</span>
               <span className="text-xl font-bold">{proposal.total_score}/100</span>
             </div>
 
-            {evaluatedBy && (
-              <div className="flex items-center gap-2">
+            {evaluatedByList.length > 0 && (
+              <div className="flex flex-col gap-1.5">
                 <span className="text-xs text-muted-foreground">Evaluated by</span>
-                <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">{evaluatedBy}</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {evaluatedByList.map((name, i) => (
+                    <span key={i} className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                      {name}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
             
             {marks.length > 0 ? (
               <div className="space-y-2 border rounded-lg p-3">
-                <h4 className="text-sm font-semibold mb-2">Rubric Scores</h4>
+                <h4 className="text-sm font-semibold mb-2">Average Rubric Scores</h4>
                 {marks.map((m, idx) => (
                   <div key={idx} className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground truncate pr-4">{m.name}</span>
@@ -214,11 +221,10 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
                   </TableRow>
                 ) : (
                   filteredProposals.map((proposal) => {
-                    const assignee = evaluators.find(
-                      (e) => e.id === proposal.assigned_to
-                    );
-                    const ap = (proposal as any).assigned_profile;
-                    const assigneeName = ap?.full_name ?? assignee?.full_name ?? null;
+                    const assignees = assignments
+                      .filter((a) => a.proposal_id === proposal.id)
+                      .map((a) => evaluators.find((e) => e.id === a.evaluator_id)?.full_name || "Unknown");
+                    
                     return (
                     <TableRow key={proposal.id}>
                       <TableCell>
@@ -226,11 +232,17 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
                         <div className="text-xs text-muted-foreground">{proposal.product_name}</div>
                       </TableCell>
                       <TableCell>
-                        {assigneeName ? (
-                          <span className="text-sm">{assigneeName}</span>
-                        ) : (
-                          <span className="text-sm text-muted-foreground italic">Unassigned</span>
-                        )}
+                        <div className="flex flex-wrap gap-1">
+                          {assignees.length > 0 ? (
+                            assignees.map((name, i) => (
+                              <Badge key={i} variant="outline" className="font-normal bg-muted/50">
+                                {name}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-sm text-muted-foreground italic">Unassigned</span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Badge variant={proposal.is_graded ? "default" : "secondary"}>
@@ -272,7 +284,7 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
                 </div>
               ) : (
                 topTeams.map((team, index) => {
-                  const evaluatedBy = evaluatorByProposal[team.id];
+                  const evaluatedByList = evaluatorByProposal[team.id] || [];
                   return (
                   <div key={team.id} className="flex items-center justify-between gap-2 group">
                     <div className="flex items-center gap-3 min-w-0">
@@ -281,10 +293,14 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
                       </div>
                       <div className="min-w-0">
                         <p className="text-sm font-medium leading-none truncate">{team.team_name}</p>
-                        {evaluatedBy && (
-                          <span className="mt-1 inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                            {evaluatedBy}
-                          </span>
+                        {evaluatedByList.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {evaluatedByList.map((name, i) => (
+                              <span key={i} className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                                {name}
+                              </span>
+                            ))}
+                          </div>
                         )}
                       </div>
                     </div>

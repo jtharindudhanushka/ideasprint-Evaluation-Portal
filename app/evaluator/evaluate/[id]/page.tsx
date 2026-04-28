@@ -26,7 +26,14 @@ export default async function EvaluationPage({ params }: PageProps) {
   if (!proposal) redirect("/evaluator");
 
   // HARD SERVER-SIDE GUARD: Only the assigned evaluator can access this page
-  if (proposal.assigned_to !== user.id) {
+  const { data: assignment } = await supabase
+    .from("proposal_assignments")
+    .select("*")
+    .eq("proposal_id", id)
+    .eq("evaluator_id", user.id)
+    .single();
+
+  if (!assignment) {
     // Redirect back with a message via search param (displayed as toast on evaluator page)
     redirect("/evaluator?error=not_assigned");
   }

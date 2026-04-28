@@ -17,10 +17,16 @@ export default async function AssignmentsPage() {
     .eq("role", "evaluator")
     .order("full_name", { ascending: true });
 
+  // Fetch all assignments
+  const { data: assignments } = await supabase
+    .from("proposal_assignments")
+    .select("*");
+
   return (
     <AssignmentsClient
       proposals={proposals ?? []}
       evaluators={evaluators ?? []}
+      assignments={assignments ?? []}
     />
   );
 }

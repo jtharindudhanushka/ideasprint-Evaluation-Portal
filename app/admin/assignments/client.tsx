@@ -29,15 +29,16 @@ import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Search, UserCheck, Users, ClipboardList, Loader2, X } from "lucide-react";
-import type { Proposal, Profile } from "@/lib/types/database";
+import { Search, UserCheck, Users, ClipboardList, Loader2, X, Plus } from "lucide-react";
+import type { Proposal, Profile, ProposalAssignment } from "@/lib/types/database";
 
 interface Props {
   proposals: Proposal[];
   evaluators: Pick<Profile, "id" | "full_name" | "role">[];
+  assignments: ProposalAssignment[];
 }
 
-export function AssignmentsClient({ proposals, evaluators }: Props) {
+export function AssignmentsClient({ proposals, evaluators, assignments }: Props) {
   const supabase = createClient();
   const router = useRouter();
 
@@ -46,10 +47,10 @@ export function AssignmentsClient({ proposals, evaluators }: Props) {
   const [bulkEvaluatorId, setBulkEvaluatorId] = useState("");
   const [bulkLoading, setBulkLoading] = useState(false);
 
-  // Reassign dialog state
-  const [reassignProposal, setReassignProposal] = useState<Proposal | null>(null);
-  const [reassignEvaluatorId, setReassignEvaluatorId] = useState("");
-  const [reassignLoading, setReassignLoading] = useState(false);
+  // Reassign / Multi-assign dialog state
+  const [assignProposal, setAssignProposal] = useState<Proposal | null>(null);
+  const [assignEvaluatorId, setAssignEvaluatorId] = useState("");
+  const [assignLoading, setAssignLoading] = useState(false);
 
   const filteredProposals = useMemo(() => {
     if (!searchQuery) return proposals;
@@ -61,8 +62,18 @@ export function AssignmentsClient({ proposals, evaluators }: Props) {
     );
   }, [proposals, searchQuery]);
 
+  // Map proposal to its assigned evaluators
+  const assigneesByProposal = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    assignments.forEach(a => {
+      if (!map[a.proposal_id]) map[a.proposal_id] = [];
+      map[a.proposal_id].push(a.evaluator_id);
+    });
+    return map;
+  }, [assignments]);
+
   // Stats
-  const assignedCount = proposals.filter((p) => p.assigned_to).length;
+  const assignedCount = proposals.filter((p) => (assigneesByProposal[p.id]?.length || 0) > 0).length;
   const unassignedCount = proposals.length - assignedCount;
 
   const toggleSelect = (id: string) => {
@@ -94,10 +105,16 @@ export function AssignmentsClient({ proposals, evaluators }: Props) {
       return;
     }
     setBulkLoading(true);
+    
+    // Upsert avoids duplicate primary key errors
+    const assignmentsToInsert = Array.from(selectedIds).map(id => ({
+      proposal_id: id,
+      evaluator_id: bulkEvaluatorId
+    }));
+
     const { error } = await supabase
-      .from("proposals")
-      .update({ assigned_to: bulkEvaluatorId })
-      .in("id", Array.from(selectedIds));
+      .from("proposal_assignments")
+      .upsert(assignmentsToInsert, { onConflict: 'proposal_id,evaluator_id' });
 
     if (error) {
       toast.error(error.message);
@@ -113,48 +130,58 @@ export function AssignmentsClient({ proposals, evaluators }: Props) {
     setBulkLoading(false);
   };
 
-  const handleUnassign = async (ids: string[]) => {
+  const handleUnassignAll = async (proposalIds: string[]) => {
     const { error } = await supabase
-      .from("proposals")
-      .update({ assigned_to: null })
-      .in("id", ids);
+      .from("proposal_assignments")
+      .delete()
+      .in("proposal_id", proposalIds);
+      
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success(`${ids.length} proposal(s) unassigned.`);
+      toast.success(`${proposalIds.length} proposal(s) completely unassigned.`);
       setSelectedIds(new Set());
       router.refresh();
     }
   };
 
-  const handleReassign = async () => {
-    if (!reassignProposal) return;
-    if (!reassignEvaluatorId) {
-      toast.error("Please select a new evaluator.");
-      return;
-    }
-    setReassignLoading(true);
+  const handleRemoveAssignee = async (proposalId: string, evaluatorId: string) => {
     const { error } = await supabase
-      .from("proposals")
-      .update({ assigned_to: reassignEvaluatorId })
-      .eq("id", reassignProposal.id);
+      .from("proposal_assignments")
+      .delete()
+      .eq("proposal_id", proposalId)
+      .eq("evaluator_id", evaluatorId);
 
     if (error) {
       toast.error(error.message);
     } else {
-      const evaluator = evaluators.find((e) => e.id === reassignEvaluatorId);
-      toast.success(`Reassigned to ${evaluator?.full_name ?? "evaluator"}.`);
-      setReassignProposal(null);
-      setReassignEvaluatorId("");
+      toast.success("Assignee removed.");
       router.refresh();
     }
-    setReassignLoading(false);
   };
 
-  const getAssigneeName = (proposal: Proposal) => {
-    if (!proposal.assigned_to) return null;
-    const e = evaluators.find((ev) => ev.id === proposal.assigned_to);
-    return e?.full_name ?? null;
+  const handleAddAssignee = async () => {
+    if (!assignProposal) return;
+    if (!assignEvaluatorId) {
+      toast.error("Please select an evaluator.");
+      return;
+    }
+    setAssignLoading(true);
+    
+    const { error } = await supabase
+      .from("proposal_assignments")
+      .upsert([{ proposal_id: assignProposal.id, evaluator_id: assignEvaluatorId }], { onConflict: 'proposal_id,evaluator_id' });
+
+    if (error) {
+      toast.error(error.message);
+    } else {
+      const evaluator = evaluators.find((e) => e.id === assignEvaluatorId);
+      toast.success(`${evaluator?.full_name ?? "Evaluator"} assigned to proposal.`);
+      setAssignProposal(null);
+      setAssignEvaluatorId("");
+      router.refresh();
+    }
+    setAssignLoading(false);
   };
 
   return (
@@ -162,7 +189,7 @@ export function AssignmentsClient({ proposals, evaluators }: Props) {
       <div>
         <h2 className="text-3xl font-bold tracking-tight">Assign Proposals</h2>
         <p className="text-muted-foreground mt-2">
-          Assign proposals to evaluators. Only the assigned evaluator can grade a proposal.
+          Assign proposals to evaluators. You can assign multiple evaluators to the same proposal.
         </p>
       </div>
 
@@ -245,7 +272,9 @@ export function AssignmentsClient({ proposals, evaluators }: Props) {
                 </TableRow>
               ) : (
                 filteredProposals.map((proposal) => {
-                  const assigneeName = getAssigneeName(proposal);
+                  const assigneeIds = assigneesByProposal[proposal.id] || [];
+                  const isAssigned = assigneeIds.length > 0;
+                  
                   return (
                     <TableRow
                       key={proposal.id}
@@ -272,13 +301,25 @@ export function AssignmentsClient({ proposals, evaluators }: Props) {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {assigneeName ? (
-                          <span className="text-sm font-medium">{assigneeName}</span>
-                        ) : (
-                          <span className="text-sm text-muted-foreground italic">
-                            Unassigned
-                          </span>
-                        )}
+                        <div className="flex flex-wrap gap-1">
+                          {isAssigned ? (
+                            assigneeIds.map(id => {
+                              const e = evaluators.find(ev => ev.id === id);
+                              return (
+                                <Badge key={id} variant="outline" className="flex items-center gap-1 font-normal bg-muted/50">
+                                  {e?.full_name || 'Unknown'}
+                                  <button onClick={() => handleRemoveAssignee(proposal.id, id)} className="text-muted-foreground hover:text-foreground">
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </Badge>
+                              );
+                            })
+                          ) : (
+                            <span className="text-sm text-muted-foreground italic">
+                              Unassigned
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -286,18 +327,19 @@ export function AssignmentsClient({ proposals, evaluators }: Props) {
                             size="sm"
                             variant="outline"
                             onClick={() => {
-                              setReassignProposal(proposal);
-                              setReassignEvaluatorId(proposal.assigned_to ?? "");
+                              setAssignProposal(proposal);
+                              setAssignEvaluatorId("");
                             }}
                           >
-                            {assigneeName ? "Reassign" : "Assign"}
+                            <Plus className="h-4 w-4 mr-1" />
+                            Add Assignee
                           </Button>
-                          {proposal.assigned_to && (
+                          {isAssigned && (
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => handleUnassign([proposal.id])}
-                              title="Remove assignment"
+                              onClick={() => handleUnassignAll([proposal.id])}
+                              title="Remove all assignments"
                             >
                               <X className="h-4 w-4" />
                             </Button>
@@ -313,7 +355,7 @@ export function AssignmentsClient({ proposals, evaluators }: Props) {
         </CardContent>
       </Card>
 
-      {/* Bulk Action Bar — appears when rows are selected */}
+      {/* Bulk Action Bar */}
       {selectedIds.size > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-xl border bg-background shadow-2xl px-5 py-3 animate-in slide-in-from-bottom-4 duration-200">
           <span className="text-sm font-medium whitespace-nowrap">
@@ -339,14 +381,14 @@ export function AssignmentsClient({ proposals, evaluators }: Props) {
             disabled={bulkLoading || !bulkEvaluatorId}
           >
             {bulkLoading && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
-            Assign
+            Add Assignee
           </Button>
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => handleUnassign(Array.from(selectedIds))}
+            onClick={() => handleUnassignAll(Array.from(selectedIds))}
           >
-            Unassign
+            Clear Assignments
           </Button>
           <Button size="sm" variant="ghost" onClick={clearSelection}>
             <X className="h-4 w-4" />
@@ -354,43 +396,47 @@ export function AssignmentsClient({ proposals, evaluators }: Props) {
         </div>
       )}
 
-      {/* Reassign Dialog */}
+      {/* Assign Dialog */}
       <Dialog
-        open={!!reassignProposal}
+        open={!!assignProposal}
         onOpenChange={(open) => {
           if (!open) {
-            setReassignProposal(null);
-            setReassignEvaluatorId("");
+            setAssignProposal(null);
+            setAssignEvaluatorId("");
           }
         }}
       >
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>
-              {reassignProposal?.assigned_to ? "Reassign" : "Assign"} Proposal
+              Add Assignee to Proposal
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <p className="text-sm font-medium">{reassignProposal?.team_name}</p>
+              <p className="text-sm font-medium">{assignProposal?.team_name}</p>
               <p className="text-xs text-muted-foreground">
-                {reassignProposal?.product_name}
+                {assignProposal?.product_name}
               </p>
             </div>
             <div className="space-y-2">
-              <Label>Evaluator</Label>
+              <Label>Select Evaluator</Label>
               <select
                 className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                value={reassignEvaluatorId}
-                onChange={(e) => setReassignEvaluatorId(e.target.value)}
-                aria-label="Select evaluator for reassignment"
+                value={assignEvaluatorId}
+                onChange={(e) => setAssignEvaluatorId(e.target.value)}
+                aria-label="Select evaluator to assign"
               >
                 <option value="">Select evaluator...</option>
-                {evaluators.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.full_name}
-                  </option>
-                ))}
+                {evaluators.map((e) => {
+                  const isAlreadyAssigned = (assigneesByProposal[assignProposal?.id || ''] || []).includes(e.id);
+                  if (isAlreadyAssigned) return null;
+                  return (
+                    <option key={e.id} value={e.id}>
+                      {e.full_name}
+                    </option>
+                  )
+                })}
               </select>
             </div>
           </div>
@@ -398,17 +444,17 @@ export function AssignmentsClient({ proposals, evaluators }: Props) {
             <Button
               variant="outline"
               onClick={() => {
-                setReassignProposal(null);
-                setReassignEvaluatorId("");
+                setAssignProposal(null);
+                setAssignEvaluatorId("");
               }}
             >
               Cancel
             </Button>
             <Button
-              onClick={handleReassign}
-              disabled={reassignLoading || !reassignEvaluatorId}
+              onClick={handleAddAssignee}
+              disabled={assignLoading || !assignEvaluatorId}
             >
-              {reassignLoading && (
+              {assignLoading && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
               Confirm

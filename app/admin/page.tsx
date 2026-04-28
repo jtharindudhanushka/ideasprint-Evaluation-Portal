@@ -65,16 +65,24 @@ export default async function AdminDashboardPage() {
     .select("id, full_name")
     .eq("role", "evaluator");
 
-  // Build a map: proposalId -> evaluator full_name
-  const evaluatorByProposal: Record<string, string> = {};
+  // Build a map: proposalId -> array of evaluator full_names
+  const evaluatorByProposal: Record<string, string[]> = {};
   if (evaluations && evaluators) {
     for (const ev of evaluations) {
       if (!evaluatorByProposal[ev.proposal_id]) {
-        const profile = evaluators.find((p) => p.id === ev.evaluator_id);
-        if (profile) evaluatorByProposal[ev.proposal_id] = profile.full_name;
+        evaluatorByProposal[ev.proposal_id] = [];
+      }
+      const profile = evaluators.find((p) => p.id === ev.evaluator_id);
+      if (profile && !evaluatorByProposal[ev.proposal_id].includes(profile.full_name)) {
+        evaluatorByProposal[ev.proposal_id].push(profile.full_name);
       }
     }
   }
+
+  // Fetch all assignments
+  const { data: assignments } = await supabase
+    .from("proposal_assignments")
+    .select("*");
 
   return (
     <AdminDashboardClient
@@ -82,6 +90,7 @@ export default async function AdminDashboardPage() {
       breakdownData={breakdownData}
       evaluators={evaluators ?? []}
       evaluatorByProposal={evaluatorByProposal}
+      assignments={assignments ?? []}
     />
   );
 }

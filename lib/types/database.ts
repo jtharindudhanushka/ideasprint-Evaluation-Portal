@@ -38,15 +38,14 @@ export interface Proposal {
   description: string;
   proposal_url: string;
   video_url: string;
-  locked_by: string | null;
-  locked_at: string | null;
-  assigned_to: string | null;
+  // removed lock and assigned_to columns
+
   total_score: number;
   is_graded: boolean;
   created_at: string;
   // Joined fields
-  locked_by_profile?: Profile;
-  assigned_profile?: { full_name: string } | null;
+  // assigned_profile is removed, if we want multiple we might join proposal_assignments
+
 }
 
 export interface Evaluation {
@@ -58,6 +57,12 @@ export interface Evaluation {
   notes: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface ProposalAssignment {
+  proposal_id: string;
+  evaluator_id: string;
+  created_at: string;
 }
 
 // Form types

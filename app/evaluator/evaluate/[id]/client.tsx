@@ -36,7 +36,7 @@ import {
   Edit,
   Save
 } from "lucide-react";
-import { isLockedByOther, timeAgo } from "@/lib/utils";
+import { timeAgo } from "@/lib/utils";
 import type { Proposal, RubricSection, Evaluation } from "@/lib/types/database";
 
 interface Props {
@@ -145,7 +145,6 @@ export function EvaluationViewClient({
       const { error: rpcError } = await supabase.rpc("submit_evaluation", {
         p_proposal_id: proposal.id,
         p_evaluations: evaluationRows,
-        p_total_score: totalScore,
       });
 
       if (rpcError) throw rpcError;

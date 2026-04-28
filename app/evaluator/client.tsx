@@ -34,7 +34,6 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ClipboardCheck,
-  Lock,
   ExternalLink,
   FileText,
   Search,
@@ -43,8 +42,7 @@ import {
   BarChart,
   Loader2,
 } from "lucide-react";
-import { isLockedByOther, timeAgo } from "@/lib/utils";
-import type { Proposal, Profile } from "@/lib/types/database";
+import type { Proposal, Profile, ProposalAssignment } from "@/lib/types/database";
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -54,7 +52,8 @@ interface Props {
   gradedProposalIds: string[];
   profiles: Pick<Profile, "id" | "full_name">[];
   breakdownData?: Record<string, any[]>;
-  evaluatorByProposal?: Record<string, string>;
+  evaluatorByProposal?: Record<string, string[]>;
+  assignments: ProposalAssignment[];
   serverNow?: string;
 }
 
@@ -63,9 +62,8 @@ export function EvaluatorDashboardClient({
   currentUserId,
   gradedProposalIds,
   profiles,
-  breakdownData = {},
   evaluatorByProposal = {},
-  serverNow,
+  assignments = [],
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -88,22 +86,20 @@ export function EvaluatorDashboardClient({
     router.push(`/evaluator/evaluate/${proposalId}`);
   };
 
-  const getLockerName = (lockedBy: string | null) => {
-    if (!lockedBy) return "";
-    const profile = profiles.find((p) => p.id === lockedBy);
-    return profile?.full_name || "Another evaluator";
-  };
-
-  const getAssigneeName = (proposal: Proposal) => {
-    if (!proposal.assigned_to) return null;
-    const profile = profiles.find((p) => p.id === proposal.assigned_to);
-    return profile?.full_name ?? null;
-  };
+  // Map proposal to its assigned evaluators
+  const assigneesByProposal = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    assignments.forEach(a => {
+      if (!map[a.proposal_id]) map[a.proposal_id] = [];
+      map[a.proposal_id].push(a.evaluator_id);
+    });
+    return map;
+  }, [assignments]);
 
   // Split proposals: mine vs others
   const myAssignments = useMemo(
-    () => proposals.filter((p) => p.assigned_to === currentUserId),
-    [proposals, currentUserId]
+    () => proposals.filter((p) => assigneesByProposal[p.id]?.includes(currentUserId)),
+    [proposals, assigneesByProposal, currentUserId]
   );
 
   const allProposals = proposals;
@@ -111,7 +107,7 @@ export function EvaluatorDashboardClient({
   // Filter my assignments
   const filteredAssignments = useMemo(() => {
     let result = myAssignments;
-    if (showOnlyPending) result = result.filter((p) => !p.is_graded);
+    if (showOnlyPending) result = result.filter((p) => !gradedProposalIds.includes(p.id));
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
@@ -122,7 +118,7 @@ export function EvaluatorDashboardClient({
       );
     }
     return result;
-  }, [myAssignments, searchQuery, showOnlyPending]);
+  }, [myAssignments, searchQuery, showOnlyPending, gradedProposalIds]);
 
   // Filter all proposals table
   const filteredAll = useMemo(() => {
@@ -150,8 +146,7 @@ export function EvaluatorDashboardClient({
     triggerClassName: string
   ) => {
     const isGradedByMe = gradedProposalIds.includes(proposal.id);
-    const marks = breakdownData[proposal.id] || [];
-    const evaluatedBy = evaluatorByProposal[proposal.id];
+    const evaluatedByList = evaluatorByProposal[proposal.id] || [];
 
     return (
       <Dialog>
@@ -160,7 +155,7 @@ export function EvaluatorDashboardClient({
         </DialogTrigger>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Grade Breakdown: {proposal.team_name}</DialogTitle>
+            <DialogTitle>Details: {proposal.team_name}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="flex items-center justify-between font-medium bg-muted/50 p-3 rounded-lg">
@@ -168,28 +163,16 @@ export function EvaluatorDashboardClient({
               <span className="text-xl font-bold">{proposal.total_score}/100</span>
             </div>
 
-            {evaluatedBy && (
-              <div className="flex items-center gap-2">
+            {evaluatedByList.length > 0 && (
+              <div className="flex flex-col gap-1.5">
                 <span className="text-xs text-muted-foreground">Evaluated by</span>
-                <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">{evaluatedBy}</span>
-              </div>
-            )}
-
-            {marks.length > 0 ? (
-              <div className="space-y-2 border rounded-lg p-3">
-                <h4 className="text-sm font-semibold mb-2">Rubric Scores</h4>
-                {marks.map((m, idx) => (
-                  <div key={idx} className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground truncate pr-4">{m.name}</span>
-                    <span className="font-medium whitespace-nowrap">
-                      {m.score} / {m.max_score}
+                <div className="flex flex-wrap gap-1.5">
+                  {evaluatedByList.map((name, i) => (
+                    <span key={i} className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                      {name}
                     </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-sm text-muted-foreground italic mb-4">
-                Detailed rubric scores are not available.
+                  ))}
+                </div>
               </div>
             )}
 
@@ -275,7 +258,7 @@ export function EvaluatorDashboardClient({
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {myAssignments.filter((p) => !p.is_graded).length}
+                {myAssignments.filter((p) => !gradedProposalIds.includes(p.id)).length}
               </div>
             </CardContent>
           </Card>
@@ -356,13 +339,7 @@ export function EvaluatorDashboardClient({
                       </TableRow>
                     ) : (
                       filteredAssignments.map((proposal) => {
-                        const lockedByOther = isLockedByOther(
-                          proposal.locked_by,
-                          proposal.locked_at,
-                          currentUserId,
-                          serverNow
-                        );
-                        const lockerName = getLockerName(proposal.locked_by);
+                        const isGradedByMe = gradedProposalIds.includes(proposal.id);
 
                         return (
                           <TableRow key={proposal.id}>
@@ -419,45 +396,23 @@ export function EvaluatorDashboardClient({
                               </div>
                             </TableCell>
                             <TableCell>
-                              {proposal.is_graded ? (
+                              {isGradedByMe ? (
                                 <Badge variant="default">Completed</Badge>
                               ) : navigatingTo === proposal.id ? (
                                 <Badge variant="secondary" className="animate-pulse">
                                   Entering...
                                 </Badge>
-                              ) : lockedByOther ? (
-                                <Badge variant="secondary">In Progress</Badge>
                               ) : (
                                 <Badge variant="outline">Available</Badge>
                               )}
                             </TableCell>
                             <TableCell className="text-right">
-                              {proposal.is_graded ? (
+                              {isGradedByMe ? (
                                 renderBreakdownDialog(
                                   proposal,
-                                  "Breakdown",
+                                  "Details",
                                   buttonVariants({ variant: "outline", size: "sm" })
                                 )
-                              ) : lockedByOther ? (
-                                <Tooltip>
-                                  <TooltipTrigger>
-                                    <span>
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        disabled
-                                        className="inline-flex items-center gap-1"
-                                      >
-                                        <Lock className="h-3 w-3" />
-                                        Locked
-                                      </Button>
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    Currently being evaluated by {lockerName} (
-                                    {timeAgo(proposal.locked_at!)})
-                                  </TooltipContent>
-                                </Tooltip>
                               ) : (
                                 <Button
                                   size="sm"
@@ -517,7 +472,7 @@ export function EvaluatorDashboardClient({
                       <TableHead>Assigned To</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Marks</TableHead>
-                      <TableHead className="text-right">Breakdown</TableHead>
+                      <TableHead className="text-right">Details</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -529,8 +484,11 @@ export function EvaluatorDashboardClient({
                       </TableRow>
                     ) : (
                       filteredAll.map((proposal) => {
-                        const assigneeName = getAssigneeName(proposal);
-                        const isMyProposal = proposal.assigned_to === currentUserId;
+                        const assigneeIds = assigneesByProposal[proposal.id] || [];
+                        const isMyProposal = assigneeIds.includes(currentUserId);
+                        const isAssigned = assigneeIds.length > 0;
+                        const assigneeNames = assigneeIds.map(id => profiles.find(p => p.id === id)?.full_name || "Unknown");
+
                         return (
                           <TableRow key={proposal.id} className={isMyProposal ? "bg-muted/20" : ""}>
                             <TableCell>
@@ -540,10 +498,14 @@ export function EvaluatorDashboardClient({
                               </div>
                             </TableCell>
                             <TableCell>
-                              {assigneeName ? (
-                                <span className={`text-sm ${isMyProposal ? "font-semibold" : ""}`}>
-                                  {isMyProposal ? "You" : assigneeName}
-                                </span>
+                              {isAssigned ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {assigneeNames.map((name, i) => (
+                                    <span key={i} className={`text-sm ${isMyProposal && assigneeIds[i] === currentUserId ? "font-semibold text-primary" : "text-muted-foreground"}`}>
+                                      {isMyProposal && assigneeIds[i] === currentUserId ? "You" : name}{i < assigneeNames.length - 1 ? "," : ""}
+                                    </span>
+                                  ))}
+                                </div>
                               ) : (
                                 <span className="text-sm text-muted-foreground italic">
                                   Unassigned
@@ -555,14 +517,14 @@ export function EvaluatorDashboardClient({
                                 variant={
                                   proposal.is_graded
                                     ? "default"
-                                    : proposal.assigned_to
+                                    : isAssigned
                                     ? "secondary"
                                     : "outline"
                                 }
                               >
                                 {proposal.is_graded
                                   ? "Graded"
-                                  : proposal.assigned_to
+                                  : isAssigned
                                   ? "Assigned"
                                   : "Unassigned"}
                               </Badge>
@@ -612,7 +574,7 @@ export function EvaluatorDashboardClient({
                   </div>
                 ) : (
                   topTeams.map((team, index) => {
-                    const evaluatedBy = evaluatorByProposal[team.id];
+                    const evaluatedByList = evaluatorByProposal[team.id] || [];
                     return (
                     <div key={team.id} className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-3 min-w-0">
@@ -623,10 +585,14 @@ export function EvaluatorDashboardClient({
                           <p className="text-sm font-medium leading-none truncate">
                             {team.team_name}
                           </p>
-                          {evaluatedBy && (
-                            <span className="mt-1 inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                              {evaluatedBy}
-                            </span>
+                          {evaluatedByList.length > 0 && (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {evaluatedByList.map((name, i) => (
+                                <span key={i} className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                                  {name}
+                                </span>
+                              ))}
+                            </div>
                           )}
                         </div>
                       </div>

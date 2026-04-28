@@ -70,16 +70,23 @@ export default async function EvaluatorDashboardPage() {
   // Fetch profiles for lock info and "evaluated by" pill
   const { data: profiles } = await supabase.from("profiles").select("id, full_name");
 
-  // Build a map: proposalId -> evaluator full_name (from the evaluator_id in evaluations)
-  const evaluatorByProposal: Record<string, string> = {};
+  // Build a map: proposalId -> array of evaluator full_names (from the evaluator_id in evaluations)
+  const evaluatorByProposal: Record<string, string[]> = {};
   if (evaluations && profiles) {
     for (const ev of evaluations) {
       if (!evaluatorByProposal[ev.proposal_id]) {
-        const profile = profiles.find((p) => p.id === ev.evaluator_id);
-        if (profile) evaluatorByProposal[ev.proposal_id] = profile.full_name;
+        evaluatorByProposal[ev.proposal_id] = [];
+      }
+      const profile = profiles.find((p) => p.id === ev.evaluator_id);
+      if (profile && !evaluatorByProposal[ev.proposal_id].includes(profile.full_name)) {
+        evaluatorByProposal[ev.proposal_id].push(profile.full_name);
       }
     }
   }
+
+  const { data: assignments } = await supabase
+    .from("proposal_assignments")
+    .select("*");
 
   return (
     <EvaluatorDashboardClient
@@ -89,6 +96,7 @@ export default async function EvaluatorDashboardPage() {
       profiles={profiles ?? []}
       breakdownData={breakdownData}
       evaluatorByProposal={evaluatorByProposal}
+      assignments={assignments ?? []}
       serverNow={new Date().toISOString()}
     />
   );
