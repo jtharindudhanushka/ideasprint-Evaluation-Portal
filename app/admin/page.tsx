@@ -35,12 +35,11 @@ export default async function AdminDashboardPage() {
       .select("*")
   ]);
 
-  // Group evaluations by proposal_id, deduplicating per criterion by averaging scores
-  // (handles multiple evaluators grading the same proposal or accidental duplicates)
+  // Group evaluations by proposal_id, storing individual scores per evaluator
   const breakdownData: Record<string, any[]> = {};
   if (evaluations) {
-    // Use a nested Map: proposal_id -> criterion_id -> { name, scores[], max_score }
-    const accumulator: Record<string, Map<string, { name: string; scores: number[]; max_score: number }>> = {};
+    // proposal_id -> Map<criterion_id, { name, max_score, scores: { [evaluator_id]: score } }>
+    const accumulator: Record<string, Map<string, { name: string; max_score: number; scores: Record<string, number> }>> = {};
 
     evaluations.forEach((ev) => {
       const criteria = Array.isArray(ev.rubric_criteria) ? ev.rubric_criteria[0] : ev.rubric_criteria;
@@ -54,20 +53,15 @@ export default async function AdminDashboardPage() {
       if (!accumulator[ev.proposal_id].has(key)) {
         accumulator[ev.proposal_id].set(key, {
           name: (criteria as any).name,
-          scores: [],
           max_score: (criteria as any).max_score,
+          scores: {},
         });
       }
-      accumulator[ev.proposal_id].get(key)!.scores.push(ev.score);
+      accumulator[ev.proposal_id].get(key)!.scores[ev.evaluator_id] = ev.score;
     });
 
-    // Collapse to averaged scores
     for (const [proposalId, criteriaMap] of Object.entries(accumulator)) {
-      breakdownData[proposalId] = Array.from(criteriaMap.values()).map((c) => ({
-        name: c.name,
-        score: Math.round(c.scores.reduce((a, b) => a + b, 0) / c.scores.length),
-        max_score: c.max_score,
-      }));
+      breakdownData[proposalId] = Array.from(criteriaMap.values());
     }
   }
 

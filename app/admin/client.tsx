@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -38,6 +41,10 @@ interface Props {
 
 export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators = [], evaluatorByProposal = {}, assignments = [] }: Props) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const router = useRouter();
+  const supabase = createClient();
 
   const totalProposals = proposals.length;
   const gradedCount = proposals.filter((p) => p.is_graded).length;
@@ -80,81 +87,146 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
       .slice(0, 15);
   }, [proposals]);
 
+  const handleDeleteProposal = async () => {
+    if (!deletingId) return;
+    setIsDeleting(true);
+    try {
+      const { error } = await supabase
+        .from("proposals")
+        .delete()
+        .eq("id", deletingId);
+
+      if (error) throw error;
+      
+      toast.success("Proposal deleted successfully");
+      setDeletingId(null);
+      router.refresh();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to delete proposal");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const renderBreakdownDialog = (proposal: Proposal, trigger: React.ReactNode, isIcon?: boolean) => {
-    const marks = breakdownData[proposal.id] || [];
-    const evaluatedByList = evaluatorByProposal[proposal.id] || [];
+    const criteriaData = (breakdownData[proposal.id] || []) as { name: string; max_score: number; scores: Record<string, number> }[];
+    const assignedEvaluatorIds = assignments
+      .filter((a) => a.proposal_id === proposal.id)
+      .map((a) => a.evaluator_id);
+    
+    const assignedEvaluators = assignedEvaluatorIds.map(id => ({
+      id,
+      name: evaluatorMap.get(id) || "Unknown"
+    }));
+
+    // Calculate total score per evaluator
+    const evaluatorTotals: Record<string, number> = {};
+    assignedEvaluatorIds.forEach(evalId => {
+      let total = 0;
+      let hasAnyScore = false;
+      criteriaData.forEach(c => {
+        if (c.scores[evalId] !== undefined) {
+          total += c.scores[evalId];
+          hasAnyScore = true;
+        }
+      });
+      if (hasAnyScore) evaluatorTotals[evalId] = total;
+    });
 
     return (
       <Dialog>
         <DialogTrigger style={isIcon ? { background: "none", border: "none", cursor: "pointer", color: "var(--bw-content-tertiary)", padding: 4, borderRadius: "var(--bw-radius-circle)", display: "flex" } : undefined}>
           {trigger}
         </DialogTrigger>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle style={{ fontSize: "var(--bw-fs-h4)" }}>
-              Grade Breakdown: {proposal.team_name}
+              Detailed Scores: {proposal.team_name}
             </DialogTitle>
           </DialogHeader>
           <div style={{ padding: "0 var(--bw-space-6) var(--bw-space-6)", display: "flex", flexDirection: "column", gap: "var(--bw-space-4)" }}>
-            {/* Total score */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                background: "var(--bw-chip)",
-                padding: "var(--bw-space-3) var(--bw-space-4)",
-                borderRadius: "var(--bw-radius-md)",
-              }}
-            >
-              <span style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-secondary)" }}>Total Score (Average)</span>
-              <span style={{ fontSize: "var(--bw-fs-h3)", fontWeight: "var(--bw-fw-bold)" as any }}>{proposal.total_score}/100</span>
+            
+            {/* Summary Row */}
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${assignedEvaluators.length + 1}, 1fr)`, gap: "var(--bw-space-2)", background: "var(--bw-chip)", padding: "var(--bw-space-3)", borderRadius: "var(--bw-radius-md)" }}>
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <span style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-tertiary)" }}>Average</span>
+                <span style={{ fontSize: "var(--bw-fs-base)", fontWeight: "var(--bw-fw-bold)" as any }}>{proposal.total_score}/100</span>
+              </div>
+              {assignedEvaluators.map(evaluator => (
+                <div key={evaluator.id} style={{ display: "flex", flexDirection: "column" }}>
+                  <span style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-tertiary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{evaluator.name}</span>
+                  <span style={{ fontSize: "var(--bw-fs-base)", fontWeight: "var(--bw-fw-bold)" as any }}>
+                    {evaluatorTotals[evaluator.id] !== undefined ? `${evaluatorTotals[evaluator.id]}/100` : "Pending"}
+                  </span>
+                </div>
+              ))}
             </div>
 
-            {/* Evaluated by */}
-            {evaluatedByList.length > 0 && (
-              <div>
-                <div style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-tertiary)", marginBottom: "var(--bw-space-2)" }}>Evaluated by</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--bw-space-2)" }}>
-                  {evaluatedByList.map((name, i) => (
-                    <Badge key={i} variant="secondary">{name}</Badge>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Detailed Table */}
+            <div style={{ border: "1px solid var(--bw-border)", borderRadius: "var(--bw-radius-md)", overflow: "hidden" }}>
+              <div style={{ overflowX: "auto" }}>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead style={{ fontSize: "var(--bw-fs-xs)", padding: "var(--bw-space-2) var(--bw-space-3)" }}>Criterion</TableHead>
+                      {assignedEvaluators.map(e => (
+                        <TableHead key={e.id} style={{ fontSize: "var(--bw-fs-xs)", textAlign: "center", padding: "var(--bw-space-2) var(--bw-space-3)" }}>{e.name}</TableHead>
+                      ))}
+                      <TableHead style={{ fontSize: "var(--bw-fs-xs)", textAlign: "right", padding: "var(--bw-space-2) var(--bw-space-3)" }}>Avg</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {criteriaData.length > 0 ? (
+                      criteriaData.map((c, idx) => {
+                        const scoresArr = assignedEvaluatorIds
+                          .map(id => c.scores[id])
+                          .filter(s => s !== undefined);
+                        const avg = scoresArr.length > 0 
+                          ? Math.round(scoresArr.reduce((a, b) => a + b, 0) / scoresArr.length)
+                          : null;
 
-            {/* Rubric scores */}
-            {marks.length > 0 ? (
-              <div style={{ border: "1px solid var(--bw-border)", borderRadius: "var(--bw-radius-md)", padding: "var(--bw-space-4)" }}>
-                <h4 style={{ fontSize: "var(--bw-fs-sm)", fontWeight: "var(--bw-fw-medium)" as any, marginBottom: "var(--bw-space-3)" }}>Average Rubric Scores</h4>
-                <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)" }}>
-                  {marks.map((m, idx) => (
-                    <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--bw-fs-sm)" }}>
-                      <span style={{ color: "var(--bw-content-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: "var(--bw-space-4)" }}>{m.name}</span>
-                      <span style={{ fontWeight: "var(--bw-fw-medium)" as any, whiteSpace: "nowrap" }}>{m.score} / {m.max_score}</span>
-                    </div>
-                  ))}
-                </div>
+                        return (
+                          <TableRow key={idx}>
+                            <TableCell style={{ fontSize: "var(--bw-fs-xs)", padding: "var(--bw-space-2) var(--bw-space-3)" }}>
+                              <div style={{ fontWeight: "var(--bw-fw-medium)" as any }}>{c.name}</div>
+                              <div style={{ fontSize: "10px", color: "var(--bw-content-tertiary)" }}>Max: {c.max_score}</div>
+                            </TableCell>
+                            {assignedEvaluatorIds.map(evalId => (
+                              <TableCell key={evalId} style={{ fontSize: "var(--bw-fs-xs)", textAlign: "center", padding: "var(--bw-space-2) var(--bw-space-3)" }}>
+                                {c.scores[evalId] !== undefined ? c.scores[evalId] : <span style={{ color: "var(--bw-content-disabled)" }}>—</span>}
+                              </TableCell>
+                            ))}
+                            <TableCell style={{ fontSize: "var(--bw-fs-xs)", textAlign: "right", fontWeight: "var(--bw-fw-bold)" as any, padding: "var(--bw-space-2) var(--bw-space-3)" }}>
+                              {avg !== null ? avg : "—"}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={assignedEvaluators.length + 2} style={{ textAlign: "center", padding: "var(--bw-space-4)", color: "var(--bw-content-disabled)", fontStyle: "italic" }}>
+                          No scoring data available yet.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
               </div>
-            ) : (
-              <div style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-tertiary)", fontStyle: "italic" }}>
-                Detailed rubric scores are not available.
-              </div>
-            )}
+            </div>
 
             {/* Links */}
             <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)", borderTop: "1px solid var(--bw-border)", paddingTop: "var(--bw-space-4)" }}>
               {proposal.proposal_url && (
                 <a href={proposal.proposal_url} target="_blank" rel="noopener noreferrer">
                   <Button variant="secondary" size="sm" style={{ width: "100%", justifyContent: "flex-start" }}>
-                    <FileText size={14} /> View Proposal PDF
+                    <FileText size={14} style={{ marginRight: 8 }} /> View Proposal PDF
                   </Button>
                 </a>
               )}
               {proposal.video_url && (
                 <a href={proposal.video_url} target="_blank" rel="noopener noreferrer">
                   <Button variant="secondary" size="sm" style={{ width: "100%", justifyContent: "flex-start" }}>
-                    <ExternalLink size={14} /> Watch Pitch Video
+                    <ExternalLink size={14} style={{ marginRight: 8 }} /> Watch Pitch Video
                   </Button>
                 </a>
               )}
@@ -223,7 +295,7 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
                 <TableHeader>
                   <TableRow>
                     <TableHead style={{ paddingLeft: "var(--bw-space-6)" }}>Team</TableHead>
-                    <TableHead>Assigned To</TableHead>
+                    <TableHead>Evaluators</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead style={{ textAlign: "right" }}>Total</TableHead>
                     <TableHead style={{ textAlign: "right", paddingRight: "var(--bw-space-6)" }}>Actions</TableHead>
@@ -238,9 +310,9 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
                     </TableRow>
                   ) : (
                     filteredProposals.map((proposal) => {
-                      const assignees = assignments
+                      const assigneeIds = assignments
                         .filter((a) => a.proposal_id === proposal.id)
-                        .map((a) => evaluatorMap.get(a.evaluator_id) || "Unknown");
+                        .map((a) => a.evaluator_id);
 
                       return (
                         <TableRow key={proposal.id}>
@@ -249,10 +321,14 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
                             <div style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-tertiary)" }}>{proposal.product_name}</div>
                           </TableCell>
                           <TableCell>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                              {assignees.length > 0 ? (
-                                assignees.map((name, i) => (
-                                  <Badge key={i} variant="outline">{name}</Badge>
+                            <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)" }}>
+                              {assigneeIds.length > 0 ? (
+                                assigneeIds.map((evalId) => (
+                                  <div key={evalId} style={{ height: 24, display: "flex", alignItems: "center" }}>
+                                    <span style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-secondary)" }}>
+                                      {evaluatorMap.get(evalId) || "Unknown"}
+                                    </span>
+                                  </div>
                                 ))
                               ) : (
                                 <span style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-disabled)", fontStyle: "italic" }}>Unassigned</span>
@@ -260,22 +336,35 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Badge variant={proposal.is_graded ? "positive" : "secondary"}>
-                              {proposal.is_graded ? "Graded" : "Pending"}
-                            </Badge>
+                            <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)" }}>
+                              {assigneeIds.map((evalId) => {
+                                const criteriaData = (breakdownData[proposal.id] || []) as any[];
+                                const hasGraded = criteriaData.some(c => c.scores[evalId] !== undefined);
+                                return (
+                                  <div key={evalId} style={{ height: 24, display: "flex", alignItems: "center" }}>
+                                    <Badge variant={hasGraded ? "positive" : "secondary"}>
+                                      {hasGraded ? "Graded" : "Pending"}
+                                    </Badge>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </TableCell>
                           <TableCell style={{ textAlign: "right", fontWeight: "var(--bw-fw-bold)" as any }}>
                             {proposal.is_graded ? `${proposal.total_score}` : "—"}
                           </TableCell>
                           <TableCell style={{ textAlign: "right", paddingRight: "var(--bw-space-6)" }}>
-                            {proposal.is_graded ? (
-                              renderBreakdownDialog(
-                                proposal,
-                                <Button variant="secondary" size="sm">Breakdown</Button>,
-                              )
-                            ) : (
-                              <span style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-disabled)" }}>Pending</span>
-                            )}
+                            <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--bw-space-2)" }}>
+                              {proposal.is_graded ? (
+                                renderBreakdownDialog(
+                                  proposal,
+                                  <Button variant="secondary" size="sm">Breakdown</Button>,
+                                )
+                              ) : (
+                                <Button variant="ghost" size="sm" disabled style={{ color: "var(--bw-content-disabled)" }}>Pending</Button>
+                              )}
+                              <Button variant="destructive" size="sm" onClick={() => setDeletingId(proposal.id)}>Delete</Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -354,6 +443,27 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
           </Card>
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deletingId} onOpenChange={(open) => !open && setDeletingId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Are you absolutely sure?</DialogTitle>
+          </DialogHeader>
+          <div style={{ padding: "0 var(--bw-space-6) var(--bw-space-6)" }}>
+            <p style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-secondary)", marginBottom: "var(--bw-space-6)" }}>
+              This action cannot be undone. This will permanently delete the proposal
+              and all associated evaluations and assignments.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--bw-space-3)" }}>
+              <Button variant="secondary" onClick={() => setDeletingId(null)} disabled={isDeleting}>Cancel</Button>
+              <Button variant="destructive" onClick={handleDeleteProposal} disabled={isDeleting}>
+                {isDeleting ? "Deleting..." : "Delete Proposal"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
