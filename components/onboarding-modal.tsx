@@ -297,16 +297,15 @@ export function OnboardingModal({
         </button>
 
         {/*
-          ── Left image panel ──
-          Hidden on mobile/tablet (<md), shown on desktop (md+).
-          On tablet we hide the image and show only the text panel full-width.
+          ── Image panel ──
+          Visible on mobile and desktop. Fixed smaller height on mobile.
         */}
         <div
-          className="hidden md:flex md:w-[40%] items-center justify-center relative overflow-hidden"
+          className="flex w-full h-[200px] md:h-auto md:w-[40%] items-center justify-center relative overflow-hidden shrink-0"
           style={{
             background: "var(--bw-bg-secondary)",
-            borderRadius: "var(--bw-radius-md) 0 0 var(--bw-radius-md)",
-            minHeight: "340px",
+            borderRadius: "var(--bw-radius-md) var(--bw-radius-md) 0 0",
+            borderBottom: "1px solid var(--bw-border)",
           }}
         >
           {imgFailed ? (
