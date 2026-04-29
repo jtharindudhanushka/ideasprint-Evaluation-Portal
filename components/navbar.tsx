@@ -1,46 +1,41 @@
 "use client";
 
+import * as React from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter, usePathname } from "next/navigation";
-import { toast } from "sonner";
-import { LogOut } from "lucide-react";
-import type { UserRole } from "@/lib/types/database";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { useState, useRef, useEffect } from "react";
-import Image from "next/image";
+import { ThemeToggle } from "./theme-toggle";
+import { LogOut, ChevronDown, User } from "lucide-react";
 
 interface NavbarProps {
-  fullName: string;
-  role: UserRole;
+  fullName?: string;
+  role?: string;
 }
 
-export function Navbar({ fullName, role }: NavbarProps) {
-  const supabase = createClient();
+export function Navbar({ fullName = "", role }: NavbarProps) {
   const router = useRouter();
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const supabase = createClient();
+  const [dropdownOpen, setDropdownOpen] = React.useState(false);
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  const initials = fullName
+    ? fullName
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
+    : "?";
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    toast.success("Signed out successfully");
     router.push("/login");
-    router.refresh();
   };
 
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .substring(0, 2);
-  };
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
+  // Close dropdown on click outside
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -48,46 +43,202 @@ export function Navbar({ fullName, role }: NavbarProps) {
   }, []);
 
   return (
-    <div className="border-b bg-background relative z-50">
-      <div className="flex h-16 items-center px-4 md:px-6">
-        <div className="flex items-center gap-2 font-semibold">
-          <Image src="/favicon.svg" alt="ideasprint logo" width={22} height={22} className="shrink-0" />
-          <span className="hidden sm:inline-block">ideasprint 2026</span>
+    <nav
+      style={{
+        position: "sticky",
+        top: 0,
+        zIndex: 50,
+        height: "var(--bw-nav-height)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 var(--bw-space-6)",
+        background: "var(--bw-bg-primary)",
+        borderBottom: "1px solid var(--bw-border)",
+      }}
+    >
+      {/* Brand */}
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-3)" }}>
+        {/* Uber-style square logo mark */}
+        <div
+          style={{
+            width: 28,
+            height: 28,
+            background: "var(--bw-bg-inverse)",
+            borderRadius: "var(--bw-radius-sm)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--bw-content-inverse)",
+            fontFamily: "var(--bw-font-heading)",
+            fontWeight: "var(--bw-fw-bold)" as any,
+            fontSize: "14px",
+          }}
+        >
+          iS
         </div>
-        
-        <div className="ml-auto flex items-center space-x-4">
-          <div className="relative" ref={dropdownRef}>
-            <button 
-              onClick={() => setIsOpen(!isOpen)}
-              className="relative flex items-center h-8 w-8 rounded-full focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-transform active:scale-95"
+        <div>
+          <span
+            style={{
+              fontFamily: "var(--bw-font-heading)",
+              fontWeight: "var(--bw-fw-bold)" as any,
+              fontSize: "var(--bw-fs-base)",
+              color: "var(--bw-content-primary)",
+            }}
+          >
+            ideasprint 2026
+          </span>
+          {role && (
+            <span
+              style={{
+                marginLeft: "var(--bw-space-2)",
+                fontSize: "var(--bw-fs-xs)",
+                color: "var(--bw-content-disabled)",
+                textTransform: "capitalize",
+              }}
             >
-              <Avatar className="h-8 w-8">
-                <AvatarFallback className="bg-primary/10 text-primary font-medium">{getInitials(fullName)}</AvatarFallback>
-              </Avatar>
-            </button>
-            
-            {isOpen && (
-              <div className="absolute right-0 mt-2 w-56 origin-top-right rounded-md bg-popover border shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none animate-in fade-in-80 zoom-in-95 slide-in-from-top-2">
-                <div className="p-3 border-b">
-                  <p className="text-sm font-medium leading-none truncate">{fullName}</p>
-                  <p className="text-xs text-muted-foreground capitalize mt-1.5">
-                    {role} Role
-                  </p>
-                </div>
-                <div className="p-1">
-                  <button
-                    onClick={handleSignOut}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-red-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/50 dark:hover:text-red-400 transition-colors"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    <span>Log out</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+              {role}
+            </span>
+          )}
         </div>
       </div>
-    </div>
+
+      {/* Right side */}
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-2)" }}>
+        <ThemeToggle />
+
+        {/* User dropdown */}
+        <div ref={dropdownRef} style={{ position: "relative" }}>
+          <button
+            onClick={() => setDropdownOpen(!dropdownOpen)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--bw-space-2)",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: "4px 8px",
+              borderRadius: "var(--bw-radius-pill)",
+              transition: "background var(--bw-duration-normal)",
+              color: "var(--bw-content-primary)",
+            }}
+            className="bw-button--ghost"
+          >
+            {/* Avatar */}
+            <div
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: "var(--bw-radius-circle)",
+                background: "var(--bw-bg-inverse)",
+                color: "var(--bw-content-inverse)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "var(--bw-fs-xs)",
+                fontWeight: "var(--bw-fw-medium)" as any,
+                fontFamily: "var(--bw-font-body)",
+              }}
+            >
+              {initials}
+            </div>
+            <span
+              style={{
+                fontSize: "var(--bw-fs-sm)",
+                fontWeight: "var(--bw-fw-medium)" as any,
+                maxWidth: 120,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+              className="hidden sm:inline"
+            >
+              {fullName || "User"}
+            </span>
+            <ChevronDown
+              size={14}
+              style={{
+                color: "var(--bw-content-tertiary)",
+                transition: "transform var(--bw-duration-normal)",
+                transform: dropdownOpen ? "rotate(180deg)" : "rotate(0deg)",
+              }}
+            />
+          </button>
+
+          {/* Dropdown menu */}
+          {dropdownOpen && (
+            <div
+              style={{
+                position: "absolute",
+                right: 0,
+                top: "calc(100% + 4px)",
+                background: "var(--bw-bg-primary)",
+                borderRadius: "var(--bw-radius-md)",
+                boxShadow: "var(--bw-shadow-200)",
+                border: "1px solid var(--bw-border)",
+                minWidth: 180,
+                padding: "var(--bw-space-1) 0",
+                animation: "bw-fade-in var(--bw-duration-fast) var(--bw-easing)",
+                zIndex: 100,
+              }}
+            >
+              {/* Profile info */}
+              <div
+                style={{
+                  padding: "var(--bw-space-3) var(--bw-space-4)",
+                  borderBottom: "1px solid var(--bw-border)",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "var(--bw-fs-sm)",
+                    fontWeight: "var(--bw-fw-medium)" as any,
+                    color: "var(--bw-content-primary)",
+                  }}
+                >
+                  {fullName || "User"}
+                </div>
+                {role && (
+                  <div
+                    style={{
+                      fontSize: "var(--bw-fs-xs)",
+                      color: "var(--bw-content-tertiary)",
+                      textTransform: "capitalize",
+                      marginTop: 2,
+                    }}
+                  >
+                    {role}
+                  </div>
+                )}
+              </div>
+
+              {/* Sign out */}
+              <button
+                onClick={handleSignOut}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--bw-space-2)",
+                  width: "100%",
+                  padding: "var(--bw-space-3) var(--bw-space-4)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: "var(--bw-fs-sm)",
+                  color: "var(--bw-content-primary)",
+                  transition: "background var(--bw-duration-fast)",
+                  textAlign: "left",
+                }}
+                className="bw-button--ghost"
+              >
+                <LogOut size={14} />
+                Sign Out
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </nav>
   );
 }

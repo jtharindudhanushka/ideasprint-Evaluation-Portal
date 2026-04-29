@@ -1,6 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { Navbar } from "@/components/navbar";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Evaluator Dashboard | ideasprint 2026",
+  description: "Evaluate ideasprint 2026 proposals",
+};
 
 export default async function EvaluatorLayout({
   children,
@@ -23,9 +29,16 @@ export default async function EvaluatorLayout({
   if (!profile) redirect("/login");
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
       <Navbar fullName={profile.full_name} role={profile.role} />
-      <main className="flex-1 space-y-4 p-4 sm:p-6 md:p-8 pt-4 sm:pt-6">
+      <main
+        style={{
+          flex: 1,
+          padding: "var(--bw-space-6) var(--bw-space-4)",
+          background: "var(--bw-bg-secondary)",
+        }}
+        className="sm:px-6 md:px-8"
+      >
         {children}
       </main>
     </div>

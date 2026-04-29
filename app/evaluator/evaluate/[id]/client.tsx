@@ -9,10 +9,11 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,7 +23,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
@@ -34,10 +34,13 @@ import {
   CheckCircle2,
   Loader2,
   Edit,
-  Save
+  Save,
+  Video,
 } from "lucide-react";
 import { timeAgo } from "@/lib/utils";
-import type { Proposal, RubricSection, Evaluation } from "@/lib/types/database";
+import type { Proposal, RubricSection, Evaluation, PdfAnnotation, VideoComment } from "@/lib/types/database";
+import { PdfAnnotationPanel } from "@/components/pdf-annotation-panel";
+import { VideoPanel } from "@/components/video-panel";
 
 interface Props {
   proposal: Proposal;
@@ -45,15 +48,18 @@ interface Props {
   existingEvaluations: Evaluation[];
   currentUserId: string;
   serverNow?: string;
+  annotations?: PdfAnnotation[];
+  videoComments?: VideoComment[];
+  evaluatorName?: string;
 }
 
 const getBandColor = (text: string) => {
   const lower = text.toLowerCase();
-  if (lower.includes("excellent") || lower.includes("outstanding") || lower.includes("high")) return "bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800";
-  if (lower.includes("good") || lower.includes("proficient") || lower.includes("above average")) return "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800";
-  if (lower.includes("average") || lower.includes("fair") || lower.includes("adequate")) return "bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-800";
-  if (lower.includes("poor") || lower.includes("weak") || lower.includes("below")) return "bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800";
-  return "bg-muted text-muted-foreground";
+  if (lower.includes("excellent") || lower.includes("outstanding") || lower.includes("high")) return "positive";
+  if (lower.includes("good") || lower.includes("proficient") || lower.includes("above average")) return "secondary"; // Maybe use primary instead of blue
+  if (lower.includes("average") || lower.includes("fair") || lower.includes("adequate")) return "secondary"; // Warning color doesn't really exist in tokens, secondary is okay
+  if (lower.includes("poor") || lower.includes("weak") || lower.includes("below")) return "negative";
+  return "secondary";
 };
 
 export function EvaluationViewClient({
@@ -62,6 +68,9 @@ export function EvaluationViewClient({
   existingEvaluations,
   currentUserId,
   serverNow = new Date().toISOString(),
+  annotations = [],
+  videoComments = [],
+  evaluatorName = "",
 }: Props) {
   const supabase = createClient();
   const router = useRouter();
@@ -69,14 +78,24 @@ export function EvaluationViewClient({
   const [scores, setScores] = useState<Record<string, number>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [globalNotes, setGlobalNotes] = useState("");
-  
+
   const isAlreadyGraded = existingEvaluations.length > 0;
   const [isEditing, setIsEditing] = useState(!isAlreadyGraded);
 
   const [showEditConfirm, setShowEditConfirm] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [pulseEdit, setPulseEdit] = useState(false);
 
-  // Initialize form with existing evaluations
+  const handleLockedInteraction = () => {
+    if (!isEditing && isAlreadyGraded) {
+      toast.info("Click 'Edit Grading' below to unlock scoring");
+      setPulseEdit(true);
+      setTimeout(() => setPulseEdit(false), 2000);
+    }
+  };
+
+  const [activeTab, setActiveTab] = useState<string>("rubric");
+
   useEffect(() => {
     if (existingEvaluations.length > 0) {
       const initialScores: Record<string, number> = {};
@@ -91,8 +110,6 @@ export function EvaluationViewClient({
       setNotes(initialNotes);
     }
   }, [existingEvaluations]);
-
-  // Note: Redundant locking logic removed as assignments are strictly 1-to-1.
 
   const handleScoreChange = useCallback(
     (criterionId: string, value: string, maxScore: number) => {
@@ -110,7 +127,6 @@ export function EvaluationViewClient({
     []
   );
 
-  // Calculate total score
   const totalScore = Object.values(scores).reduce(
     (sum, score) => sum + score,
     0
@@ -118,7 +134,6 @@ export function EvaluationViewClient({
   const maxPossibleScore = sections.reduce((sum, s) => sum + s.total_marks, 0);
 
   const handleSubmit = async () => {
-    // Validate all criteria have scores
     const allCriteria = sections.flatMap((s) => s.criteria ?? []);
     const missingScores = allCriteria.filter(
       (c) => scores[c.id] === undefined || scores[c.id] === null
@@ -133,15 +148,31 @@ export function EvaluationViewClient({
 
     setLoading(true);
 
+    // Fire-and-forget snapshot helper — calls the server-side API route which
+    // uses the service role key. Never throws; grading is never blocked by this.
+    const fireSnapshot = (data: any) => {
+      fetch("/api/snapshot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          proposalId: proposal.id,
+          teamName: proposal.team_name,
+          evaluatorName,
+          evaluatorId: currentUserId,
+          evaluationData: data,
+        }),
+      }).catch((err) => {
+        console.error("[snapshot] fetch failed (non-fatal):", err);
+      });
+    };
+
     try {
-      // Map evaluations for the RPC (proposal_id, evaluator_id handled by RPC)
       const evaluationRows = allCriteria.map((criterion) => ({
         rubric_criterion_id: criterion.id,
         score: scores[criterion.id] ?? 0,
         notes: notes[criterion.id] || globalNotes || "",
       }));
 
-      // Atomically submit evaluations and update proposal using RPC
       const { error: rpcError } = await supabase.rpc("submit_evaluation", {
         p_proposal_id: proposal.id,
         p_evaluations: evaluationRows,
@@ -149,8 +180,11 @@ export function EvaluationViewClient({
 
       if (rpcError) throw rpcError;
 
+      // Kick off snapshot in background — does NOT await, never blocks the user
+      fireSnapshot(evaluationRows);
+
       toast.success("Evaluation saved successfully!");
-      setIsEditing(false); // Switch back to view mode
+      setIsEditing(false);
       router.push("/evaluator");
       router.refresh();
     } catch (err) {
@@ -162,86 +196,30 @@ export function EvaluationViewClient({
     }
   };
 
-  return (
-    <div className="space-y-6 max-w-5xl mx-auto pb-24 relative">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
-        <div className="space-y-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push("/evaluator")}
-            className="text-muted-foreground -ml-2 mb-2"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Dashboard
-          </Button>
-          <div className="flex items-center gap-3">
-            <h2 className="text-3xl font-bold tracking-tight">{proposal.product_name}</h2>
-            {!isEditing && <Badge variant="secondary">Read Only</Badge>}
-          </div>
-          <p className="text-muted-foreground">by {proposal.team_name}</p>
-          {proposal.description && (
-            <p className="text-sm text-muted-foreground mt-4 max-w-2xl">
-              {proposal.description}
-            </p>
-          )}
-        </div>
-        <div className="flex gap-2">
-          {proposal.proposal_url && (
-            <a
-              href={proposal.proposal_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={buttonVariants({ variant: "outline" })}
-            >
-              <FileText className="mr-2 h-4 w-4" />
-              View Proposal
-            </a>
-          )}
-          {proposal.video_url && (
-            <a
-              href={proposal.video_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={buttonVariants({ variant: "outline" })}
-            >
-              <ExternalLink className="mr-2 h-4 w-4" />
-              Watch Video
-            </a>
-          )}
+  const hasPdf = !!proposal.proposal_url;
+  const hasVideo = !!proposal.video_url;
+  const hasMedia = hasPdf || hasVideo;
+
+  const RubricForm = (
+    <div onClickCapture={handleLockedInteraction} style={{ position: "relative", display: "flex", flexDirection: "column", gap: "var(--bw-space-4)" }}>
+      {/* Sticky total marks bar — offset accounts for navbar height (~64px) */}
+      <div style={{ position: "sticky", top: 72, zIndex: 20, background: "var(--bw-bg-primary)", padding: "10px 20px", borderRadius: "var(--bw-radius-md)", border: "1px solid var(--bw-border)", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "var(--bw-shadow-100)" }}>
+        <span style={{ fontSize: "var(--bw-fs-sm)", fontWeight: "var(--bw-fw-medium)" as any, color: "var(--bw-content-secondary)" }}>Total Marks</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-4)" }}>
+          <Progress value={maxPossibleScore > 0 ? (totalScore / maxPossibleScore) * 100 : 0} style={{ width: 120, height: 6 }} />
+          <span style={{ fontSize: "var(--bw-fs-h4)", fontWeight: "var(--bw-fw-bold)" as any }}>{totalScore}<span style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-tertiary)", fontWeight: "var(--bw-fw-normal)" as any }}>/{maxPossibleScore}</span></span>
         </div>
       </div>
-
-      {/* Score Progress (Sticky) */}
-      <div className="sticky top-2 z-40 bg-background/95 backdrop-blur pt-2 pb-4 border-b -mx-4 px-4 sm:mx-0 sm:px-0">
-        <Card className="shadow-md border-primary/20">
-          <CardContent className="py-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-semibold">Total Marks</span>
-              <span className="text-lg font-bold">
-                {totalScore} / {maxPossibleScore}
-              </span>
-            </div>
-            <Progress
-              value={maxPossibleScore > 0 ? (totalScore / maxPossibleScore) * 100 : 0}
-              className="h-2.5"
-            />
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Rubric Sections */}
       {sections.map((section) => (
-        <Card key={section.id} className={!isEditing ? "opacity-90 bg-muted/20" : ""}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b">
-            <div>
-              <CardTitle className="text-xl">{section.name}</CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
+        <Card key={section.id} variant="flat" style={{ opacity: !isEditing ? 0.9 : 1, background: !isEditing ? "var(--bw-chip)" : undefined }}>
+          <CardHeader style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: "var(--bw-space-5) var(--bw-space-6)", borderBottom: "1px solid var(--bw-border)" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              <CardTitle style={{ fontSize: "var(--bw-fs-h4)", margin: 0 }}>{section.name}</CardTitle>
+              <p style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-secondary)", margin: 0 }}>
                 {section.total_marks} marks total
               </p>
             </div>
-            <Badge variant="secondary" className="text-sm px-3 py-1">
+            <Badge variant="secondary" style={{ fontSize: "var(--bw-fs-sm)", padding: "var(--bw-space-1) var(--bw-space-3)" }}>
               {(section.criteria ?? []).reduce(
                 (sum, c) => sum + (scores[c.id] ?? 0),
                 0
@@ -249,65 +227,61 @@ export function EvaluationViewClient({
               / {section.total_marks}
             </Badge>
           </CardHeader>
-          <CardContent className="divide-y">
-            {(section.criteria ?? []).map((criterion) => (
-              <div key={criterion.id} className="py-6 space-y-4">
-                <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                  <div className="flex-1 space-y-1">
-                    <h3 className="font-semibold">{criterion.name}</h3>
-                    <p className="text-sm text-muted-foreground">
+          <CardContent style={{ display: "flex", flexDirection: "column", gap: 0, padding: 0 }}>
+            {(section.criteria ?? []).map((criterion, idx) => (
+              <div key={criterion.id} style={{ padding: "var(--bw-space-5) var(--bw-space-6)", borderTop: idx > 0 ? "1px solid var(--bw-border)" : "none", display: "flex", flexDirection: "column", gap: "var(--bw-space-3)" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "var(--bw-space-3)" }}>
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "var(--bw-space-1)" }}>
+                    <h3 style={{ fontSize: "var(--bw-fs-sm)", fontWeight: "var(--bw-fw-medium)" as any }}>{criterion.name}</h3>
+                    <p style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-secondary)", lineHeight: "var(--bw-lh-relaxed)" }}>
                       {criterion.description}
                     </p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id={`score-${criterion.id}`}
-                        type="number"
-                        min={0}
-                        max={criterion.max_score}
-                        value={
-                          scores[criterion.id] !== undefined
-                            ? String(scores[criterion.id])
-                            : ""
-                        }
-                        onChange={(e) =>
-                          handleScoreChange(
-                            criterion.id,
-                            e.target.value,
-                            criterion.max_score
-                          )
-                        }
-                        className="w-20 text-center font-bold"
-                        disabled={!isEditing}
-                      />
-                      <span className="text-sm font-medium text-muted-foreground">
-                        / {criterion.max_score}
-                      </span>
-                    </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-2)", flexShrink: 0 }}>
+                    <Input
+                      id={`score-${criterion.id}`}
+                      type="number"
+                      min={0}
+                      max={criterion.max_score}
+                      value={
+                        scores[criterion.id] !== undefined
+                          ? String(scores[criterion.id])
+                          : ""
+                      }
+                      onChange={(e) =>
+                        handleScoreChange(
+                          criterion.id,
+                          e.target.value,
+                          criterion.max_score
+                        )
+                      }
+                      style={{ width: 64, textAlign: "center", fontWeight: "var(--bw-fw-bold)" as any, height: 32, fontSize: "var(--bw-fs-sm)" }}
+                      disabled={!isEditing}
+                    />
+                    <span style={{ fontSize: "var(--bw-fs-xs)", fontWeight: "var(--bw-fw-medium)" as any, color: "var(--bw-content-secondary)" }}>
+                      / {criterion.max_score}
+                    </span>
                   </div>
                 </div>
 
-                {/* Grading Bands */}
-                <div className="flex flex-wrap gap-2">
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {criterion.grading_bands.map((band, idx) => (
                     <Badge
                       key={idx}
-                      variant="outline"
-                      className={`font-normal ${getBandColor(band)}`}
+                      variant={getBandColor(band) as any}
+                      style={{ fontSize: "10px", padding: "2px 8px", fontWeight: "var(--bw-fw-normal)" as any }}
                     >
                       {band}
                     </Badge>
                   ))}
                 </div>
 
-                {/* Per-criterion notes */}
                 <Textarea
                   id={`notes-${criterion.id}`}
                   placeholder={`Comments for ${criterion.name}...`}
                   value={notes[criterion.id] ?? ""}
                   onChange={(e) => handleNotesChange(criterion.id, e.target.value)}
-                  className="mt-2 min-h-[80px]"
+                  style={{ minHeight: 60, fontSize: "var(--bw-fs-sm)" }}
                   disabled={!isEditing}
                 />
               </div>
@@ -316,28 +290,174 @@ export function EvaluationViewClient({
         </Card>
       ))}
 
-      {/* Global Notes */}
-      <Card className={!isEditing ? "opacity-90 bg-muted/20" : ""}>
-        <CardHeader>
-          <CardTitle>Overall Comments</CardTitle>
+      <Card variant="flat" style={{ opacity: !isEditing ? 0.9 : 1, background: !isEditing ? "var(--bw-chip)" : undefined }}>
+        <CardHeader style={{ padding: "var(--bw-space-6) var(--bw-space-6) var(--bw-space-4)", borderBottom: "1px solid var(--bw-border)" }}>
+          <CardTitle style={{ fontSize: "var(--bw-fs-h4)" }}>Overall Comments</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent style={{ padding: "var(--bw-space-6)" }}>
           <Textarea
             id="global-notes"
             placeholder="Final feedback for the team..."
             value={globalNotes}
             onChange={(e) => setGlobalNotes(e.target.value)}
-            className="min-h-[120px]"
+            style={{ minHeight: 100, fontSize: "var(--bw-fs-sm)" }}
             disabled={!isEditing}
           />
         </CardContent>
       </Card>
+    </div>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-4)", maxWidth: hasMedia ? 1600 : 1024, margin: "0 auto", paddingBottom: 96, position: "relative" }}>
+      {/* Header */}
+      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "var(--bw-space-4)" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-1)" }}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push("/evaluator")}
+            style={{ color: "var(--bw-content-secondary)", marginLeft: "-8px", marginBottom: "var(--bw-space-2)", alignSelf: "flex-start" }}
+          >
+            <ArrowLeft size={16} style={{ marginRight: 8 }} />
+            Back to Dashboard
+          </Button>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-3)" }}>
+            <h2
+              style={{ fontFamily: "var(--bw-font-heading)", fontSize: "var(--bw-fs-h2)", fontWeight: "var(--bw-fw-bold)" as any, lineHeight: "var(--bw-lh-tight)" }}
+            >
+              {proposal.product_name}
+            </h2>
+            {!isEditing && <Badge variant="secondary">Read Only</Badge>}
+          </div>
+          <p style={{ color: "var(--bw-content-secondary)", fontSize: "var(--bw-fs-sm)" }}>by {proposal.team_name}</p>
+          {proposal.description && (
+            <p style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-secondary)", marginTop: "var(--bw-space-2)", maxWidth: 672, lineHeight: "var(--bw-lh-relaxed)" }}>
+              {proposal.description}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {hasMedia ? (
+        <>
+          {/* Desktop layout */}
+          <div className="hidden xl:grid xl:grid-cols-[3fr_2fr] xl:gap-6 items-start">
+            <div style={{ border: "1px solid var(--bw-border)", borderRadius: "var(--bw-radius-md)", overflow: "hidden", background: "var(--bw-chip)", display: "flex", flexDirection: "column", height: "calc(100vh - 180px)", position: "sticky", top: 90 }}>
+              <Tabs defaultValue={hasPdf ? "document" : "video"} style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                <TabsList variant="line" style={{ padding: "0 var(--bw-space-3)", flexShrink: 0 }}>
+                  {hasPdf && (
+                    <TabsTrigger value="document">
+                      <FileText size={14} style={{ marginRight: 6 }} />
+                      Document
+                    </TabsTrigger>
+                  )}
+                  {hasVideo && (
+                    <TabsTrigger value="video">
+                      <Video size={14} style={{ marginRight: 6 }} />
+                      Video
+                    </TabsTrigger>
+                  )}
+                </TabsList>
+                {hasPdf && (
+                  <TabsContent value="document" style={{ flex: 1, overflow: "hidden" }}>
+                    <PdfAnnotationPanel
+                      proposalUrl={proposal.proposal_url}
+                      proposalId={proposal.id}
+                      evaluatorId={currentUserId}
+                      evaluatorName={evaluatorName}
+                      annotations={annotations}
+                      isEditing={isEditing}
+                    />
+                  </TabsContent>
+                )}
+                {hasVideo && (
+                  <TabsContent value="video" style={{ flex: 1, overflow: "hidden" }}>
+                    <VideoPanel
+                      videoUrl={proposal.video_url}
+                      proposalId={proposal.id}
+                      evaluatorId={currentUserId}
+                      evaluatorName={evaluatorName}
+                      comments={videoComments}
+                      isEditing={isEditing}
+                    />
+                  </TabsContent>
+                )}
+              </Tabs>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-4)" }}>
+              {RubricForm}
+            </div>
+          </div>
+
+          {/* Mobile/Tablet layout */}
+          <div className="xl:hidden">
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <TabsList variant="line" style={{ width: "100%", marginBottom: "var(--bw-space-4)" }}>
+                <TabsTrigger value="rubric" style={{ flex: 1 }}>
+                  Rubric
+                </TabsTrigger>
+                {hasPdf && (
+                  <TabsTrigger value="document" style={{ flex: 1 }}>
+                    <FileText size={14} style={{ marginRight: 6 }} />
+                    Document
+                  </TabsTrigger>
+                )}
+                {hasVideo && (
+                  <TabsTrigger value="video" style={{ flex: 1 }}>
+                    <Video size={14} style={{ marginRight: 6 }} />
+                    Video
+                  </TabsTrigger>
+                )}
+              </TabsList>
+
+              <TabsContent value="rubric">
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-4)" }}>{RubricForm}</div>
+              </TabsContent>
+
+              {hasPdf && (
+                <TabsContent value="document">
+                  <div style={{ border: "1px solid var(--bw-border)", borderRadius: "var(--bw-radius-md)", overflow: "hidden", background: "var(--bw-chip)", minHeight: "60vh" }}>
+                    <PdfAnnotationPanel
+                      proposalUrl={proposal.proposal_url}
+                      proposalId={proposal.id}
+                      evaluatorId={currentUserId}
+                      evaluatorName={evaluatorName}
+                      annotations={annotations}
+                      isEditing={isEditing}
+                    />
+                  </div>
+                </TabsContent>
+              )}
+
+              {hasVideo && (
+                <TabsContent value="video">
+                  <div style={{ border: "1px solid var(--bw-border)", borderRadius: "var(--bw-radius-md)", overflow: "hidden", background: "var(--bw-chip)" }}>
+                    <VideoPanel
+                      videoUrl={proposal.video_url}
+                      proposalId={proposal.id}
+                      evaluatorId={currentUserId}
+                      evaluatorName={evaluatorName}
+                      comments={videoComments}
+                      isEditing={isEditing}
+                    />
+                  </div>
+                </TabsContent>
+              )}
+            </Tabs>
+          </div>
+        </>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-4)", maxWidth: 1024 }}>{RubricForm}</div>
+      )}
 
       {/* Action Buttons (Fixed Bottom Banner) */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/95 border-t backdrop-blur z-50 flex justify-end gap-3 px-8">
-        <div className="max-w-5xl mx-auto w-full flex justify-end gap-3">
+      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, padding: "16px var(--bw-space-6)", background: "var(--bw-bg-primary)", borderTop: "1px solid var(--bw-border)", zIndex: 50, display: "flex", justifyContent: "flex-end" }}>
+        <div style={{ maxWidth: hasMedia ? 1600 : 1024, margin: "0 auto", width: "100%", display: "flex", justifyContent: "flex-end", gap: "var(--bw-space-3)" }}>
           <Button
-            variant="outline"
+            variant="secondary"
+            size="sm"
             onClick={() => router.push("/evaluator")}
           >
             Cancel
@@ -346,11 +466,12 @@ export function EvaluationViewClient({
           {!isEditing ? (
             <>
               <Button
-                variant="default"
-                className="min-w-[200px]"
+                variant="primary"
+                size="sm"
+                style={{ minWidth: 160, transition: "all 0.2s ease", transform: pulseEdit ? "scale(1.05)" : "scale(1)", boxShadow: pulseEdit ? "0 0 0 4px var(--bw-primary-light, rgba(0,0,0,0.1))" : "none" }}
                 onClick={() => setShowEditConfirm(true)}
               >
-                <Edit className="mr-2 h-4 w-4" />
+                <Edit size={14} style={{ marginRight: 8 }} />
                 Edit Grading
               </Button>
               <AlertDialog open={showEditConfirm} onOpenChange={setShowEditConfirm}>
@@ -358,7 +479,7 @@ export function EvaluationViewClient({
                   <AlertDialogHeader>
                     <AlertDialogTitle>Edit this evaluation?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This proposal has already been graded. Are you sure you want to enter edit mode and modify the scores? This will acquire a lock on the proposal.
+                      This proposal has already been graded. Are you sure you want to enter edit mode and modify the scores?
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -376,17 +497,18 @@ export function EvaluationViewClient({
           ) : (
             <>
               <Button
-                variant="default"
-                className="min-w-[200px]"
+                variant="primary"
+                size="sm"
+                style={{ minWidth: 160 }}
                 disabled={loading}
                 onClick={() => setShowSubmitConfirm(true)}
               >
                 {loading ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 size={14} style={{ marginRight: 8, animation: "spin 1s linear infinite" }} />
                 ) : isAlreadyGraded ? (
-                  <Save className="mr-2 h-4 w-4" />
+                  <Save size={14} style={{ marginRight: 8 }} />
                 ) : (
-                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  <CheckCircle2 size={14} style={{ marginRight: 8 }} />
                 )}
                 {loading ? "Saving..." : isAlreadyGraded ? "Save Changes" : "Submit Evaluation"}
               </Button>

@@ -1,30 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import Image from "next/image";
+import { Loader2, ArrowRight } from "lucide-react";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
   const router = useRouter();
   const supabase = createClient();
+  const emailRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    emailRef.current?.focus();
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    if (!email || !password) {
+      toast.error("Please fill in both fields.");
+      return;
+    }
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
       toast.error(error.message);
@@ -32,88 +34,264 @@ export default function LoginPage() {
       return;
     }
 
-    toast.success("Signed in successfully!");
+    toast.success("Welcome back!");
+    router.push("/");
     router.refresh();
   };
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row">
-
-      {/* Left side branding / image — hidden on mobile, shown on lg+ */}
-      <div className="relative hidden lg:flex lg:w-1/2 flex-col p-10 text-white overflow-hidden">
-        <Image
-          src="/loginimage.jpg"
-          alt="ideasprint 2026 background"
-          fill
-          className="object-cover"
-          priority
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        background: "var(--bw-bg-primary)",
+      }}
+    >
+      {/* Left panel — image + brand (desktop only) */}
+      <div
+        className="hidden lg:flex"
+        style={{
+          flex: "1 1 50%",
+          background: "var(--bw-bg-inverse)",
+          position: "relative",
+          overflow: "hidden",
+          flexDirection: "column",
+          justifyContent: "flex-end",
+          padding: "var(--bw-space-12)",
+        }}
+      >
+        {/* Background image */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            backgroundImage: "url(/loginimage.jpg)",
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
         />
-        <div className="absolute inset-0 bg-black/60" />
-        <div className="relative z-20 flex items-center gap-2">
-          <Image src="/favicon.svg" alt="ideasprint logo" width={28} height={28} />
-          <span className="text-lg font-semibold tracking-tight">ideasprint 2026</span>
-        </div>
-        <div className="relative z-20 mt-auto">
-          <blockquote className="space-y-2">
-            <p className="text-lg font-medium">The Intra-Departmental Start-Up Challenge.</p>
-            <footer className="text-sm text-white/70">ideasprint 2026</footer>
-          </blockquote>
+
+        {/* Brand content over image */}
+        <div style={{ position: "relative", zIndex: 1 }}>
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              background: "var(--bw-white)",
+              borderRadius: "var(--bw-radius-md)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "var(--bw-black)",
+              fontFamily: "var(--bw-font-heading)",
+              fontWeight: "var(--bw-fw-bold)" as any,
+              fontSize: "var(--bw-fs-h3)",
+              marginBottom: "var(--bw-space-6)",
+            }}
+          >
+            iS
+          </div>
+          <h1
+            style={{
+              fontFamily: "var(--bw-font-heading)",
+              fontSize: "var(--bw-fs-display)",
+              fontWeight: "var(--bw-fw-bold)" as any,
+              lineHeight: "var(--bw-lh-tight)",
+              color: "var(--bw-white)",
+              marginBottom: "var(--bw-space-4)",
+            }}
+          >
+            ideasprint
+            <br />
+            2026
+          </h1>
+          <p
+            style={{
+              fontSize: "var(--bw-fs-lg)",
+              color: "rgba(255, 255, 255, 0.7)",
+              lineHeight: "var(--bw-lh-body)",
+              maxWidth: 400,
+            }}
+          >
+            Evaluation portal for the lecture panel.
+            <br />
+            Grade proposals, review pitches, shape innovation.
+          </p>
         </div>
       </div>
 
-      {/* Mobile top branding strip — only shown on small screens */}
-      <div className="lg:hidden flex items-center gap-2 px-6 pt-8 pb-4">
-        <Image src="/favicon.svg" alt="ideasprint logo" width={24} height={24} />
-        <span className="text-base font-semibold tracking-tight">ideasprint 2026</span>
-      </div>
-
-      {/* Right side form */}
-      <div className="flex flex-1 items-center justify-center px-6 py-8 lg:py-0 lg:w-1/2">
-        <div className="w-full max-w-sm space-y-6">
-          <div className="flex flex-col space-y-2 text-center">
-            <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
-            <p className="text-sm text-muted-foreground">
-              Enter your email and password to sign in
-            </p>
+      {/* Right panel — login form */}
+      <div
+        style={{
+          flex: "1 1 50%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "var(--bw-space-8)",
+          minHeight: "100vh",
+        }}
+      >
+        <div style={{ width: "100%", maxWidth: 400 }}>
+          {/* Mobile brand (shown only < lg) */}
+          <div className="lg:hidden" style={{ marginBottom: "var(--bw-space-10)", textAlign: "center" }}>
+            <div
+              style={{
+                width: 40,
+                height: 40,
+                background: "var(--bw-bg-inverse)",
+                borderRadius: "var(--bw-radius-md)",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "var(--bw-content-inverse)",
+                fontFamily: "var(--bw-font-heading)",
+                fontWeight: "var(--bw-fw-bold)" as any,
+                fontSize: "var(--bw-fs-h4)",
+                marginBottom: "var(--bw-space-3)",
+              }}
+            >
+              iS
+            </div>
+            <h1
+              style={{
+                fontFamily: "var(--bw-font-heading)",
+                fontSize: "var(--bw-fs-h2)",
+                fontWeight: "var(--bw-fw-bold)" as any,
+                color: "var(--bw-content-primary)",
+              }}
+            >
+              ideasprint 2026
+            </h1>
           </div>
 
-          <form onSubmit={handleLogin} className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                placeholder="name@example.com"
+          {/* Form heading */}
+          <h2
+            style={{
+              fontFamily: "var(--bw-font-heading)",
+              fontSize: "var(--bw-fs-h3)",
+              fontWeight: "var(--bw-fw-bold)" as any,
+              lineHeight: "var(--bw-lh-heading)",
+              color: "var(--bw-content-primary)",
+              marginBottom: "var(--bw-space-2)",
+            }}
+          >
+            Sign in
+          </h2>
+          <p
+            style={{
+              fontSize: "var(--bw-fs-sm)",
+              color: "var(--bw-content-secondary)",
+              marginBottom: "var(--bw-space-8)",
+            }}
+          >
+            Enter your credentials to access the evaluation dashboard.
+          </p>
+
+          <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-5)" }}>
+            {/* Email */}
+            <div>
+              <label
+                htmlFor="login-email"
+                style={{
+                  display: "block",
+                  fontSize: "var(--bw-fs-sm)",
+                  fontWeight: "var(--bw-fw-medium)" as any,
+                  color: "var(--bw-content-primary)",
+                  marginBottom: "var(--bw-space-2)",
+                }}
+              >
+                Email
+              </label>
+              <input
+                ref={emailRef}
+                id="login-email"
                 type="email"
-                autoCapitalize="none"
                 autoComplete="email"
-                autoCorrect="off"
+                placeholder="you@university.edu"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                className="bw-input"
+                style={{ height: 48 }}
                 required
-                disabled={loading}
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
+
+            {/* Password */}
+            <div>
+              <label
+                htmlFor="login-password"
+                style={{
+                  display: "block",
+                  fontSize: "var(--bw-fs-sm)",
+                  fontWeight: "var(--bw-fw-medium)" as any,
+                  color: "var(--bw-content-primary)",
+                  marginBottom: "var(--bw-space-2)",
+                }}
+              >
+                Password
+              </label>
+              <input
+                id="login-password"
                 type="password"
-                placeholder="Enter your password"
                 autoComplete="current-password"
+                placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                className="bw-input"
+                style={{ height: 48 }}
                 required
-                disabled={loading}
               />
             </div>
-            <Button disabled={loading} type="submit" className="w-full mt-2">
-              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Sign In
-            </Button>
+
+            {/* Submit */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="bw-button bw-button--primary"
+              style={{
+                width: "100%",
+                height: 48,
+                borderRadius: "var(--bw-radius-pill)",
+                fontFamily: "var(--bw-font-body)",
+                fontSize: "var(--bw-fs-base)",
+                fontWeight: "var(--bw-fw-medium)" as any,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "var(--bw-space-2)",
+                cursor: loading ? "not-allowed" : "pointer",
+                opacity: loading ? 0.6 : 1,
+                background: "var(--bw-bg-inverse)",
+                color: "var(--bw-content-inverse)",
+                border: "none",
+                transition: "all var(--bw-duration-normal) var(--bw-easing)",
+                marginTop: "var(--bw-space-2)",
+              }}
+            >
+              {loading ? (
+                <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} />
+              ) : (
+                <>
+                  Sign in
+                  <ArrowRight size={18} />
+                </>
+              )}
+            </button>
           </form>
 
-          <p className="text-center text-sm text-muted-foreground">
-            Access is restricted to authorized panel members.
+          {/* Footer note */}
+          <p
+            style={{
+              marginTop: "var(--bw-space-8)",
+              fontSize: "var(--bw-fs-xs)",
+              color: "var(--bw-content-disabled)",
+              textAlign: "center",
+              lineHeight: "var(--bw-lh-relaxed)",
+            }}
+          >
+            Credentials are provided by the event organizer.
+            <br />
+            Contact your administrator if you need access.
           </p>
         </div>
       </div>

@@ -4,24 +4,36 @@ import { AdminDashboardClient } from "./client";
 export default async function AdminDashboardPage() {
   const supabase = await createClient();
 
-  const { data: proposals } = await supabase
-    .from("proposals")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  // Fetch all evaluations with criteria names — include evaluator_id and rubric_criterion_id
-  const { data: evaluations } = await supabase
-    .from("evaluations")
-    .select(`
-      proposal_id,
-      evaluator_id,
-      rubric_criterion_id,
-      score,
-      rubric_criteria (
-        name,
-        max_score
-      )
-    `);
+  const [
+    { data: proposals },
+    { data: evaluations },
+    { data: evaluators },
+    { data: assignments }
+  ] = await Promise.all([
+    supabase
+      .from("proposals")
+      .select("*")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("evaluations")
+      .select(`
+        proposal_id,
+        evaluator_id,
+        rubric_criterion_id,
+        score,
+        rubric_criteria (
+          name,
+          max_score
+        )
+      `),
+    supabase
+      .from("profiles")
+      .select("id, full_name")
+      .eq("role", "evaluator"),
+    supabase
+      .from("proposal_assignments")
+      .select("*")
+  ]);
 
   // Group evaluations by proposal_id, deduplicating per criterion by averaging scores
   // (handles multiple evaluators grading the same proposal or accidental duplicates)
@@ -59,30 +71,20 @@ export default async function AdminDashboardPage() {
     }
   }
 
-  // Fetch all profiles (for assigned column and "evaluated by" pill)
-  const { data: evaluators } = await supabase
-    .from("profiles")
-    .select("id, full_name")
-    .eq("role", "evaluator");
-
   // Build a map: proposalId -> array of evaluator full_names
   const evaluatorByProposal: Record<string, string[]> = {};
   if (evaluations && evaluators) {
+    const evaluatorMap = new Map(evaluators.map((e) => [e.id, e.full_name]));
     for (const ev of evaluations) {
       if (!evaluatorByProposal[ev.proposal_id]) {
         evaluatorByProposal[ev.proposal_id] = [];
       }
-      const profile = evaluators.find((p) => p.id === ev.evaluator_id);
-      if (profile && !evaluatorByProposal[ev.proposal_id].includes(profile.full_name)) {
-        evaluatorByProposal[ev.proposal_id].push(profile.full_name);
+      const fullName = evaluatorMap.get(ev.evaluator_id);
+      if (fullName && !evaluatorByProposal[ev.proposal_id].includes(fullName)) {
+        evaluatorByProposal[ev.proposal_id].push(fullName);
       }
     }
   }
-
-  // Fetch all assignments
-  const { data: assignments } = await supabase
-    .from("proposal_assignments")
-    .select("*");
 
   return (
     <AdminDashboardClient

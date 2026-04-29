@@ -17,8 +17,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { LayoutDashboard, Trophy, Clock, FileText, Search, ExternalLink, Edit, BarChart } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -26,8 +25,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { LayoutDashboard, Trophy, Clock, FileText, Search, ExternalLink, BarChart } from "lucide-react";
 import type { Proposal, Profile, ProposalAssignment } from "@/lib/types/database";
-import Link from "next/link";
 
 interface Props {
   proposals: Proposal[];
@@ -59,7 +58,10 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
     { label: "Avg Score", value: avgScore, icon: LayoutDashboard },
   ];
 
-  // Search logic
+  const evaluatorMap = useMemo(() => {
+    return new Map(evaluators.map((e) => [e.id, e.full_name]));
+  }, [evaluators]);
+
   const filteredProposals = useMemo(() => {
     if (!searchQuery) return proposals;
     const query = searchQuery.toLowerCase();
@@ -71,7 +73,6 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
     );
   }, [proposals, searchQuery]);
 
-  // Top 15 Teams logic
   const topTeams = useMemo(() => {
     return proposals
       .filter((p) => p.is_graded)
@@ -79,73 +80,82 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
       .slice(0, 15);
   }, [proposals]);
 
-  const renderBreakdownDialog = (proposal: Proposal, triggerContent: React.ReactNode, triggerClassName: string) => {
+  const renderBreakdownDialog = (proposal: Proposal, trigger: React.ReactNode, isIcon?: boolean) => {
     const marks = breakdownData[proposal.id] || [];
     const evaluatedByList = evaluatorByProposal[proposal.id] || [];
 
     return (
       <Dialog>
-        <DialogTrigger className={triggerClassName}>
-          {triggerContent}
+        <DialogTrigger style={isIcon ? { background: "none", border: "none", cursor: "pointer", color: "var(--bw-content-tertiary)", padding: 4, borderRadius: "var(--bw-radius-circle)", display: "flex" } : undefined}>
+          {trigger}
         </DialogTrigger>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Grade Breakdown: {proposal.team_name}</DialogTitle>
+            <DialogTitle style={{ fontSize: "var(--bw-fs-h4)" }}>
+              Grade Breakdown: {proposal.team_name}
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="flex items-center justify-between font-medium bg-muted/50 p-3 rounded-lg">
-              <span>Total Score (Average)</span>
-              <span className="text-xl font-bold">{proposal.total_score}/100</span>
+          <div style={{ padding: "0 var(--bw-space-6) var(--bw-space-6)", display: "flex", flexDirection: "column", gap: "var(--bw-space-4)" }}>
+            {/* Total score */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                background: "var(--bw-chip)",
+                padding: "var(--bw-space-3) var(--bw-space-4)",
+                borderRadius: "var(--bw-radius-md)",
+              }}
+            >
+              <span style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-secondary)" }}>Total Score (Average)</span>
+              <span style={{ fontSize: "var(--bw-fs-h3)", fontWeight: "var(--bw-fw-bold)" as any }}>{proposal.total_score}/100</span>
             </div>
 
+            {/* Evaluated by */}
             {evaluatedByList.length > 0 && (
-              <div className="flex flex-col gap-1.5">
-                <span className="text-xs text-muted-foreground">Evaluated by</span>
-                <div className="flex flex-wrap gap-1.5">
+              <div>
+                <div style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-tertiary)", marginBottom: "var(--bw-space-2)" }}>Evaluated by</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--bw-space-2)" }}>
                   {evaluatedByList.map((name, i) => (
-                    <span key={i} className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
-                      {name}
-                    </span>
+                    <Badge key={i} variant="secondary">{name}</Badge>
                   ))}
                 </div>
               </div>
             )}
-            
+
+            {/* Rubric scores */}
             {marks.length > 0 ? (
-              <div className="space-y-2 border rounded-lg p-3">
-                <h4 className="text-sm font-semibold mb-2">Average Rubric Scores</h4>
-                {marks.map((m, idx) => (
-                  <div key={idx} className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground truncate pr-4">{m.name}</span>
-                    <span className="font-medium whitespace-nowrap">{m.score} / {m.max_score}</span>
-                  </div>
-                ))}
+              <div style={{ border: "1px solid var(--bw-border)", borderRadius: "var(--bw-radius-md)", padding: "var(--bw-space-4)" }}>
+                <h4 style={{ fontSize: "var(--bw-fs-sm)", fontWeight: "var(--bw-fw-medium)" as any, marginBottom: "var(--bw-space-3)" }}>Average Rubric Scores</h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)" }}>
+                  {marks.map((m, idx) => (
+                    <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--bw-fs-sm)" }}>
+                      <span style={{ color: "var(--bw-content-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: "var(--bw-space-4)" }}>{m.name}</span>
+                      <span style={{ fontWeight: "var(--bw-fw-medium)" as any, whiteSpace: "nowrap" }}>{m.score} / {m.max_score}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : (
-              <div className="text-sm text-muted-foreground italic mb-4">
+              <div style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-tertiary)", fontStyle: "italic" }}>
                 Detailed rubric scores are not available.
               </div>
             )}
 
-            <div className="flex flex-col gap-2 pt-2 border-t">
+            {/* Links */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)", borderTop: "1px solid var(--bw-border)", paddingTop: "var(--bw-space-4)" }}>
               {proposal.proposal_url && (
-                <a 
-                  href={proposal.proposal_url} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className={buttonVariants({ variant: "outline", className: "w-full justify-start" })}
-                >
-                  <FileText className="mr-2 h-4 w-4" /> View Proposal PDF
+                <a href={proposal.proposal_url} target="_blank" rel="noopener noreferrer">
+                  <Button variant="secondary" size="sm" style={{ width: "100%", justifyContent: "flex-start" }}>
+                    <FileText size={14} /> View Proposal PDF
+                  </Button>
                 </a>
               )}
               {proposal.video_url && (
-                <a 
-                  href={proposal.video_url} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className={buttonVariants({ variant: "outline", className: "w-full justify-start" })}
-                >
-                  <ExternalLink className="mr-2 h-4 w-4" /> Watch Pitch Video
+                <a href={proposal.video_url} target="_blank" rel="noopener noreferrer">
+                  <Button variant="secondary" size="sm" style={{ width: "100%", justifyContent: "flex-start" }}>
+                    <ExternalLink size={14} /> Watch Pitch Video
+                  </Button>
                 </a>
               )}
             </div>
@@ -156,169 +166,193 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
   };
 
   return (
-    <div className="space-y-6">
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-6)" }}>
+      {/* Page heading */}
       <div>
-        <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
-        <p className="text-muted-foreground mt-2">
+        <h2 style={{ fontFamily: "var(--bw-font-heading)", fontSize: "var(--bw-fs-h1)", fontWeight: "var(--bw-fw-bold)" as any, lineHeight: "var(--bw-lh-tight)" }}>
+          Dashboard
+        </h2>
+        <p style={{ marginTop: "var(--bw-space-2)", fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-secondary)" }}>
           Overview of all ideasprint 2026 proposals
         </p>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => {
           const Icon = stat.icon;
           return (
-            <Card key={stat.label}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{stat.label}</CardTitle>
-                <Icon className="h-4 w-4 text-muted-foreground" />
+            <Card key={stat.label} variant="flat">
+              <CardHeader style={{ padding: "var(--bw-space-5) var(--bw-space-5) var(--bw-space-2)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: "var(--bw-fs-xs)", fontWeight: "var(--bw-fw-medium)" as any, color: "var(--bw-content-tertiary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>{stat.label}</span>
+                  <Icon size={14} style={{ color: "var(--bw-content-disabled)" }} />
+                </div>
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stat.value}</div>
+              <CardContent style={{ padding: "var(--bw-space-2) var(--bw-space-5) var(--bw-space-5)" }}>
+                <div style={{ fontSize: "var(--bw-fs-h2)", fontWeight: "var(--bw-fw-bold)" as any }}>{stat.value}</div>
               </CardContent>
             </Card>
           );
         })}
       </div>
 
-      {/* Split View */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Proposals List (Left) */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <CardTitle>Recent Proposals</CardTitle>
-              <div className="relative w-full sm:w-64">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+      {/* Split View: Table + Leaderboard */}
+      <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
+        {/* Proposals Table */}
+        <Card variant="flat" style={{ display: "flex", flexDirection: "column" }}>
+          <CardHeader style={{ padding: "var(--bw-space-6)" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "var(--bw-space-4)" }}>
+              <CardTitle style={{ fontSize: "var(--bw-fs-h4)" }}>Recent Proposals</CardTitle>
+              <div style={{ position: "relative", width: "100%", maxWidth: 260 }}>
+                <Search size={16} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--bw-content-disabled)" }} />
                 <Input
                   type="search"
                   placeholder="Search team, product..."
-                  className="w-full bg-background pl-8"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ paddingLeft: 34 }}
+                  pill
                 />
               </div>
             </div>
           </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Team</TableHead>
-                  <TableHead>Assigned To</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredProposals.length === 0 ? (
+          <CardContent style={{ padding: "var(--bw-space-0) var(--bw-space-6) var(--bw-space-6)" }}>
+            <div style={{ overflowX: "auto", margin: "0 calc(var(--bw-space-6) * -1)" }}>
+              <Table style={{ minWidth: 800 }}>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={5} className="h-24 text-center">
-                      No proposals found.
-                    </TableCell>
+                    <TableHead style={{ paddingLeft: "var(--bw-space-6)" }}>Team</TableHead>
+                    <TableHead>Assigned To</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead style={{ textAlign: "right" }}>Total</TableHead>
+                    <TableHead style={{ textAlign: "right", paddingRight: "var(--bw-space-6)" }}>Actions</TableHead>
                   </TableRow>
-                ) : (
-                  filteredProposals.map((proposal) => {
-                    const assignees = assignments
-                      .filter((a) => a.proposal_id === proposal.id)
-                      .map((a) => evaluators.find((e) => e.id === a.evaluator_id)?.full_name || "Unknown");
-                    
-                    return (
-                    <TableRow key={proposal.id}>
-                      <TableCell>
-                        <div className="font-medium">{proposal.team_name}</div>
-                        <div className="text-xs text-muted-foreground">{proposal.product_name}</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {assignees.length > 0 ? (
-                            assignees.map((name, i) => (
-                              <Badge key={i} variant="outline" className="font-normal bg-muted/50">
-                                {name}
-                              </Badge>
-                            ))
-                          ) : (
-                            <span className="text-sm text-muted-foreground italic">Unassigned</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={proposal.is_graded ? "default" : "secondary"}>
-                          {proposal.is_graded ? "Graded" : "Pending"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {proposal.is_graded ? `${proposal.total_score}` : "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {proposal.is_graded ? (
-                          renderBreakdownDialog(proposal, "Breakdown", buttonVariants({ variant: "outline", size: "sm" }))
-                        ) : (
-                          <span className="text-sm text-muted-foreground">Pending</span>
-                        )}
+                </TableHeader>
+                <TableBody>
+                  {filteredProposals.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} style={{ height: 96, textAlign: "center", color: "var(--bw-content-disabled)" }}>
+                        No proposals found.
                       </TableCell>
                     </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                  ) : (
+                    filteredProposals.map((proposal) => {
+                      const assignees = assignments
+                        .filter((a) => a.proposal_id === proposal.id)
+                        .map((a) => evaluatorMap.get(a.evaluator_id) || "Unknown");
 
-        {/* Top 15 Teams (Right) */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Trophy className="h-5 w-5 text-yellow-500" />
-              Top 15 Teams
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {topTeams.length === 0 ? (
-                <div className="text-sm text-muted-foreground text-center py-4">
-                  No graded proposals yet.
-                </div>
-              ) : (
-                topTeams.map((team, index) => {
-                  const evaluatedByList = evaluatorByProposal[team.id] || [];
-                  return (
-                  <div key={team.id} className="flex items-center justify-between gap-2 group">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                        {index + 1}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium leading-none truncate">{team.team_name}</p>
-                        {evaluatedByList.length > 0 && (
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {evaluatedByList.map((name, i) => (
-                              <span key={i} className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                                {name}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-3">
-                      <div className="font-bold">{team.total_score}</div>
-                      {renderBreakdownDialog(
-                        team,
-                        <BarChart className="h-4 w-4" />,
-                        buttonVariants({ variant: "ghost", size: "icon", className: "h-8 w-8 text-muted-foreground" })
-                      )}
-                    </div>
-                  </div>
-                  );
-                })
-              )}
+                      return (
+                        <TableRow key={proposal.id}>
+                          <TableCell style={{ paddingLeft: "var(--bw-space-6)" }}>
+                            <div style={{ fontWeight: "var(--bw-fw-medium)" as any }}>{proposal.team_name}</div>
+                            <div style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-tertiary)" }}>{proposal.product_name}</div>
+                          </TableCell>
+                          <TableCell>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                              {assignees.length > 0 ? (
+                                assignees.map((name, i) => (
+                                  <Badge key={i} variant="outline">{name}</Badge>
+                                ))
+                              ) : (
+                                <span style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-disabled)", fontStyle: "italic" }}>Unassigned</span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={proposal.is_graded ? "positive" : "secondary"}>
+                              {proposal.is_graded ? "Graded" : "Pending"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell style={{ textAlign: "right", fontWeight: "var(--bw-fw-bold)" as any }}>
+                            {proposal.is_graded ? `${proposal.total_score}` : "—"}
+                          </TableCell>
+                          <TableCell style={{ textAlign: "right", paddingRight: "var(--bw-space-6)" }}>
+                            {proposal.is_graded ? (
+                              renderBreakdownDialog(
+                                proposal,
+                                <Button variant="secondary" size="sm">Breakdown</Button>,
+                              )
+                            ) : (
+                              <span style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-disabled)" }}>Pending</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
             </div>
           </CardContent>
         </Card>
+
+        {/* Top 15 Leaderboard */}
+        <div style={{ position: "sticky", top: "calc(var(--bw-nav-height) + var(--bw-space-6))", alignSelf: "start", maxHeight: "calc(100vh - var(--bw-nav-height) - var(--bw-space-12))", overflowY: "auto" }} className="hidden xl:block">
+          <Card variant="flat" style={{ display: "flex", flexDirection: "column" }}>
+            <CardHeader style={{ padding: "var(--bw-space-6)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-2)" }}>
+                <Trophy size={18} style={{ color: "var(--bw-warning)" }} />
+                <CardTitle style={{ fontSize: "var(--bw-fs-h4)" }}>Top 15 Teams</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent style={{ padding: "0 var(--bw-space-6) var(--bw-space-6)" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-4)" }}>
+                {topTeams.length === 0 ? (
+                  <div style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-disabled)", textAlign: "center", padding: "var(--bw-space-6) 0" }}>
+                    No graded proposals yet.
+                  </div>
+                ) : (
+                  topTeams.map((team, index) => {
+                    const evaluatedByList = evaluatorByProposal[team.id] || [];
+                    return (
+                      <div key={team.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--bw-space-2)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-3)", minWidth: 0, flex: 1 }}>
+                          {/* Rank badge */}
+                          <div
+                            style={{
+                              width: 24,
+                              height: 24,
+                              borderRadius: "var(--bw-radius-circle)",
+                              background: index < 3 ? "var(--bw-bg-inverse)" : "var(--bw-chip)",
+                              color: index < 3 ? "var(--bw-content-inverse)" : "var(--bw-content-primary)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: "10px",
+                              fontWeight: "var(--bw-fw-bold)" as any,
+                              flexShrink: 0,
+                            }}
+                          >
+                            {index + 1}
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <p style={{ fontSize: "var(--bw-fs-sm)", fontWeight: "var(--bw-fw-medium)" as any, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{team.team_name}</p>
+                            {evaluatedByList.length > 0 && (
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 2 }}>
+                                {evaluatedByList.map((name, i) => (
+                                  <Badge key={i} variant="secondary" style={{ fontSize: "10px", padding: "0px 6px", height: 16 }}>{name}</Badge>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-3)", flexShrink: 0 }}>
+                          <span style={{ fontWeight: "var(--bw-fw-bold)" as any, fontSize: "var(--bw-fs-sm)" }}>{team.total_score}</span>
+                          {renderBreakdownDialog(
+                            team,
+                            <BarChart size={14} />,
+                            true
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

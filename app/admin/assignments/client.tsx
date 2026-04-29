@@ -2,12 +2,6 @@
 
 import { useState, useMemo } from "react";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
   Table,
   TableBody,
   TableCell,
@@ -15,6 +9,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,7 +29,7 @@ import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Search, UserCheck, Users, ClipboardList, Loader2, X, Plus } from "lucide-react";
+import { Search, Loader2, X, Plus } from "lucide-react";
 import type { Proposal, Profile, ProposalAssignment } from "@/lib/types/database";
 
 interface Props {
@@ -52,6 +52,13 @@ export function AssignmentsClient({ proposals, evaluators, assignments }: Props)
   const [assignEvaluatorId, setAssignEvaluatorId] = useState("");
   const [assignLoading, setAssignLoading] = useState(false);
 
+  // Remove confirmation state
+  const [removeConfirm, setRemoveConfirm] = useState<{ proposalId: string, evaluatorId: string } | null>(null);
+
+  const evaluatorMap = useMemo(() => {
+    return new Map(evaluators.map((e) => [e.id, e.full_name]));
+  }, [evaluators]);
+
   const filteredProposals = useMemo(() => {
     if (!searchQuery) return proposals;
     const q = searchQuery.toLowerCase();
@@ -71,6 +78,18 @@ export function AssignmentsClient({ proposals, evaluators, assignments }: Props)
     });
     return map;
   }, [assignments]);
+
+  // Map evaluator workload (number of proposals assigned)
+  const evaluatorWorkload = useMemo(() => {
+    const counts: Record<string, number> = {};
+    evaluators.forEach(e => counts[e.id] = 0);
+    assignments.forEach(a => {
+      if (counts[a.evaluator_id] !== undefined) {
+        counts[a.evaluator_id]++;
+      }
+    });
+    return counts;
+  }, [evaluators, assignments]);
 
   // Stats
   const assignedCount = proposals.filter((p) => (assigneesByProposal[p.id]?.length || 0) > 0).length;
@@ -119,9 +138,9 @@ export function AssignmentsClient({ proposals, evaluators, assignments }: Props)
     if (error) {
       toast.error(error.message);
     } else {
-      const evaluator = evaluators.find((e) => e.id === bulkEvaluatorId);
+      const evaluatorName = evaluatorMap.get(bulkEvaluatorId);
       toast.success(
-        `${selectedIds.size} proposal(s) assigned to ${evaluator?.full_name ?? "evaluator"}.`
+        `${selectedIds.size} proposal(s) assigned to ${evaluatorName ?? "evaluator"}.`
       );
       setSelectedIds(new Set());
       setBulkEvaluatorId("");
@@ -145,7 +164,14 @@ export function AssignmentsClient({ proposals, evaluators, assignments }: Props)
     }
   };
 
-  const handleRemoveAssignee = async (proposalId: string, evaluatorId: string) => {
+  const confirmRemoveAssignee = (proposalId: string, evaluatorId: string) => {
+    setRemoveConfirm({ proposalId, evaluatorId });
+  };
+
+  const handleRemoveAssignee = async () => {
+    if (!removeConfirm) return;
+    const { proposalId, evaluatorId } = removeConfirm;
+    
     const { error } = await supabase
       .from("proposal_assignments")
       .delete()
@@ -156,6 +182,7 @@ export function AssignmentsClient({ proposals, evaluators, assignments }: Props)
       toast.error(error.message);
     } else {
       toast.success("Assignee removed.");
+      setRemoveConfirm(null);
       router.refresh();
     }
   };
@@ -175,8 +202,8 @@ export function AssignmentsClient({ proposals, evaluators, assignments }: Props)
     if (error) {
       toast.error(error.message);
     } else {
-      const evaluator = evaluators.find((e) => e.id === assignEvaluatorId);
-      toast.success(`${evaluator?.full_name ?? "Evaluator"} assigned to proposal.`);
+      const evaluatorName = evaluatorMap.get(assignEvaluatorId);
+      toast.success(`${evaluatorName ?? "Evaluator"} assigned to proposal.`);
       setAssignProposal(null);
       setAssignEvaluatorId("");
       router.refresh();
@@ -185,185 +212,172 @@ export function AssignmentsClient({ proposals, evaluators, assignments }: Props)
   };
 
   return (
-    <div className="space-y-6">
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-6)" }}>
       <div>
-        <h2 className="text-3xl font-bold tracking-tight">Assign Proposals</h2>
-        <p className="text-muted-foreground mt-2">
+        <h2 style={{ fontFamily: "var(--bw-font-heading)", fontSize: "var(--bw-fs-h1)", fontWeight: "var(--bw-fw-bold)" as any, lineHeight: "var(--bw-lh-tight)", color: "var(--bw-content-primary)" }}>Assign Proposals</h2>
+        <p style={{ marginTop: "var(--bw-space-2)", fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-secondary)" }}>
           Assign proposals to evaluators. You can assign multiple evaluators to the same proposal.
         </p>
       </div>
 
-      {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Proposals</CardTitle>
-            <ClipboardList className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{proposals.length}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Assigned</CardTitle>
-            <UserCheck className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{assignedCount}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Unassigned</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{unassignedCount}</div>
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Main Table */}
       <Card>
         <CardHeader>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <CardTitle>All Proposals</CardTitle>
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "var(--bw-space-4)" }}>
+            <CardTitle style={{ fontSize: "var(--bw-fs-h4)" }}>All Proposals</CardTitle>
+            <div style={{ position: "relative", width: "100%", maxWidth: 260 }}>
+              <Search size={16} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--bw-content-disabled)" }} />
               <Input
                 type="search"
                 placeholder="Search team or product..."
-                className="w-full bg-background pl-8"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                style={{ paddingLeft: 34 }}
+                pill
               />
             </div>
           </div>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-10">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 cursor-pointer rounded border border-input"
-                    checked={
-                      filteredProposals.length > 0 &&
-                      selectedIds.size === filteredProposals.length
-                    }
-                    onChange={toggleSelectAll}
-                    aria-label="Select all proposals"
-                  />
-                </TableHead>
-                <TableHead>Team &amp; Product</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Assigned To</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredProposals.length === 0 ? (
+        <CardContent style={{ paddingTop: 0 }}>
+          <div style={{ overflowX: "auto" }}>
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center">
-                    No proposals found.
-                  </TableCell>
+                  <TableHead style={{ width: 40 }}>
+                    <input
+                      type="checkbox"
+                      style={{ cursor: "pointer", width: 16, height: 16 }}
+                      checked={
+                        filteredProposals.length > 0 &&
+                        selectedIds.size === filteredProposals.length
+                      }
+                      onChange={toggleSelectAll}
+                      aria-label="Select all proposals"
+                    />
+                  </TableHead>
+                  <TableHead>Team &amp; Product</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Assigned To</TableHead>
+                  <TableHead style={{ textAlign: "right" }}>Actions</TableHead>
                 </TableRow>
-              ) : (
-                filteredProposals.map((proposal) => {
-                  const assigneeIds = assigneesByProposal[proposal.id] || [];
-                  const isAssigned = assigneeIds.length > 0;
-                  
-                  return (
-                    <TableRow
-                      key={proposal.id}
-                      className={selectedIds.has(proposal.id) ? "bg-muted/40" : ""}
-                    >
-                      <TableCell>
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 cursor-pointer rounded border border-input"
-                          checked={selectedIds.has(proposal.id)}
-                          onChange={() => toggleSelect(proposal.id)}
-                          aria-label={`Select ${proposal.team_name}`}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium">{proposal.team_name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {proposal.product_name}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={proposal.is_graded ? "default" : "secondary"}>
-                          {proposal.is_graded ? "Graded" : "Pending"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {isAssigned ? (
-                            assigneeIds.map(id => {
-                              const e = evaluators.find(ev => ev.id === id);
-                              return (
-                                <Badge key={id} variant="outline" className="flex items-center gap-1 font-normal bg-muted/50">
-                                  {e?.full_name || 'Unknown'}
-                                  <button onClick={() => handleRemoveAssignee(proposal.id, id)} className="text-muted-foreground hover:text-foreground">
-                                    <X className="h-3 w-3" />
-                                  </button>
-                                </Badge>
-                              );
-                            })
-                          ) : (
-                            <span className="text-sm text-muted-foreground italic">
-                              Unassigned
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setAssignProposal(proposal);
-                              setAssignEvaluatorId("");
-                            }}
-                          >
-                            <Plus className="h-4 w-4 mr-1" />
-                            Add Assignee
-                          </Button>
-                          {isAssigned && (
+              </TableHeader>
+              <TableBody>
+                {filteredProposals.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} style={{ height: 96, textAlign: "center", color: "var(--bw-content-disabled)" }}>
+                      No proposals found.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredProposals.map((proposal) => {
+                    const assigneeIds = assigneesByProposal[proposal.id] || [];
+                    const isAssigned = assigneeIds.length > 0;
+                    
+                    return (
+                      <TableRow
+                        key={proposal.id}
+                        style={{ backgroundColor: selectedIds.has(proposal.id) ? "var(--bw-hover-light)" : "transparent" }}
+                      >
+                        <TableCell>
+                          <input
+                            type="checkbox"
+                            style={{ cursor: "pointer", width: 16, height: 16 }}
+                            checked={selectedIds.has(proposal.id)}
+                            onChange={() => toggleSelect(proposal.id)}
+                            aria-label={`Select ${proposal.team_name}`}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <div style={{ fontWeight: "var(--bw-fw-medium)" as any }}>{proposal.team_name}</div>
+                          <div style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-tertiary)" }}>
+                            {proposal.product_name}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={proposal.is_graded ? "default" : "secondary"}>
+                            {proposal.is_graded ? "Graded" : "Pending"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            {isAssigned ? (
+                              assigneeIds.map(id => {
+                                const eName = evaluatorMap.get(id);
+                                return (
+                                  <Badge key={id} variant="secondary" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                    {eName || 'Unknown'}
+                                    <button onClick={() => confirmRemoveAssignee(proposal.id, id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--bw-content-tertiary)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                      <X size={12} />
+                                    </button>
+                                  </Badge>
+                                );
+                              })
+                            ) : (
+                              <span style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-disabled)", fontStyle: "italic" }}>
+                                Unassigned
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell style={{ textAlign: "right" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "var(--bw-space-2)" }}>
                             <Button
                               size="sm"
-                              variant="ghost"
-                              onClick={() => handleUnassignAll([proposal.id])}
-                              title="Remove all assignments"
+                              variant="secondary"
+                              onClick={() => {
+                                setAssignProposal(proposal);
+                                setAssignEvaluatorId("");
+                              }}
                             >
-                              <X className="h-4 w-4" />
+                              <Plus size={14} style={{ marginRight: 4 }} />
+                              Add Assignee
                             </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 
       {/* Bulk Action Bar */}
       {selectedIds.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-xl border bg-background shadow-2xl px-5 py-3 animate-in slide-in-from-bottom-4 duration-200">
-          <span className="text-sm font-medium whitespace-nowrap">
+        <div style={{
+          position: "fixed",
+          bottom: "var(--bw-space-6)",
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 50,
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--bw-space-3)",
+          borderRadius: "var(--bw-radius-pill)",
+          border: "1px solid var(--bw-border)",
+          background: "var(--bw-bg-primary)",
+          boxShadow: "var(--bw-shadow-200)",
+          padding: "var(--bw-space-2) var(--bw-space-4)",
+          animation: "bw-slide-in-left var(--bw-duration-normal) var(--bw-easing) reverse" // Note: reverse slide-in-left isn't great here, but keeping it simple
+        }}>
+          <span style={{ fontSize: "var(--bw-fs-sm)", fontWeight: "var(--bw-fw-medium)" as any, whiteSpace: "nowrap" }}>
             {selectedIds.size} selected
           </span>
-          <div className="h-4 w-px bg-border" />
+          <div style={{ width: 1, height: 16, background: "var(--bw-border)" }} />
           <select
-            className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            style={{
+              height: 32,
+              borderRadius: "var(--bw-radius-pill)",
+              border: "1px solid var(--bw-border)",
+              background: "var(--bw-bg-primary)",
+              color: "var(--bw-content-primary)",
+              padding: "0 var(--bw-space-3)",
+              fontSize: "var(--bw-fs-sm)",
+              outline: "none",
+            }}
             value={bulkEvaluatorId}
             onChange={(e) => setBulkEvaluatorId(e.target.value)}
             aria-label="Select evaluator"
@@ -371,7 +385,7 @@ export function AssignmentsClient({ proposals, evaluators, assignments }: Props)
             <option value="">Select evaluator...</option>
             {evaluators.map((e) => (
               <option key={e.id} value={e.id}>
-                {e.full_name}
+                {e.full_name} ({evaluatorWorkload[e.id] || 0} assigned)
               </option>
             ))}
           </select>
@@ -380,7 +394,7 @@ export function AssignmentsClient({ proposals, evaluators, assignments }: Props)
             onClick={handleBulkAssign}
             disabled={bulkLoading || !bulkEvaluatorId}
           >
-            {bulkLoading && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
+            {bulkLoading && <Loader2 size={14} style={{ marginRight: 6, animation: "spin 1s linear infinite" }} />}
             Add Assignee
           </Button>
           <Button
@@ -390,8 +404,8 @@ export function AssignmentsClient({ proposals, evaluators, assignments }: Props)
           >
             Clear Assignments
           </Button>
-          <Button size="sm" variant="ghost" onClick={clearSelection}>
-            <X className="h-4 w-4" />
+          <Button size="icon-sm" variant="ghost" onClick={clearSelection}>
+            <X size={14} />
           </Button>
         </div>
       )}
@@ -406,58 +420,73 @@ export function AssignmentsClient({ proposals, evaluators, assignments }: Props)
           }
         }}
       >
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle style={{ fontSize: "var(--bw-fs-h4)" }}>
               Add Assignee to Proposal
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div style={{ padding: "0 var(--bw-space-6) var(--bw-space-4)", display: "flex", flexDirection: "column", gap: "var(--bw-space-4)" }}>
             <div>
-              <p className="text-sm font-medium">{assignProposal?.team_name}</p>
-              <p className="text-xs text-muted-foreground">
+              <p style={{ fontSize: "var(--bw-fs-sm)", fontWeight: "var(--bw-fw-medium)" as any }}>{assignProposal?.team_name}</p>
+              <p style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-secondary)" }}>
                 {assignProposal?.product_name}
               </p>
             </div>
-            <div className="space-y-2">
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)" }}>
               <Label>Select Evaluator</Label>
               <select
-                className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                style={{
+                  height: 40,
+                  borderRadius: "var(--bw-radius-md)",
+                  border: "1px solid var(--bw-border)",
+                  background: "var(--bw-bg-primary)",
+                  color: "var(--bw-content-primary)",
+                  padding: "0 var(--bw-space-3)",
+                  fontSize: "var(--bw-fs-sm)",
+                  outline: "none",
+                  width: "100%",
+                }}
                 value={assignEvaluatorId}
                 onChange={(e) => setAssignEvaluatorId(e.target.value)}
-                aria-label="Select evaluator to assign"
               >
-                <option value="">Select evaluator...</option>
-                {evaluators.map((e) => {
-                  const isAlreadyAssigned = (assigneesByProposal[assignProposal?.id || ''] || []).includes(e.id);
-                  if (isAlreadyAssigned) return null;
-                  return (
-                    <option key={e.id} value={e.id}>
-                      {e.full_name}
-                    </option>
-                  )
-                })}
+                <option value="">Select an evaluator...</option>
+                {evaluators.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.full_name} ({evaluatorWorkload[e.id] || 0} assigned)
+                  </option>
+                ))}
               </select>
             </div>
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setAssignProposal(null);
-                setAssignEvaluatorId("");
-              }}
-            >
-              Cancel
+            <Button variant="ghost" onClick={() => setAssignProposal(null)}>Cancel</Button>
+            <Button onClick={handleAddAssignee} disabled={assignLoading || !assignEvaluatorId}>
+              {assignLoading && <Loader2 size={16} style={{ marginRight: 8, animation: "spin 1s linear infinite" }} />}
+              Assign Evaluator
             </Button>
-            <Button
-              onClick={handleAddAssignee}
-              disabled={assignLoading || !assignEvaluatorId}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove Confirmation Dialog */}
+      <Dialog open={!!removeConfirm} onOpenChange={(open) => !open && setRemoveConfirm(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove Assignment</DialogTitle>
+          </DialogHeader>
+          <div style={{ padding: "0 var(--bw-space-6) var(--bw-space-4)" }}>
+            <p style={{ fontSize: "var(--bw-fs-sm)" }}>
+              Are you sure you want to remove <strong>{removeConfirm ? evaluatorMap.get(removeConfirm.evaluatorId) : ""}</strong> from this proposal?
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setRemoveConfirm(null)}>Cancel</Button>
+            <Button 
+              onClick={handleRemoveAssignee}
+              style={{ background: "var(--bw-negative)", color: "white" }}
             >
-              {assignLoading && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Confirm
+              Remove
             </Button>
           </DialogFooter>
         </DialogContent>

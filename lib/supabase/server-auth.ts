@@ -47,14 +47,18 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Logged in and on login page → redirect to appropriate dashboard
-  if (user && pathname === "/login") {
-    const { data: profile } = await supabase
+  let profile: { role: string } | null = null;
+  if (user && (pathname === "/login" || pathname === "/" || pathname.startsWith("/admin"))) {
+    const { data } = await supabase
       .from("profiles")
       .select("role")
       .eq("id", user.id)
       .single();
+    profile = data;
+  }
 
+  // Logged in and on login page or root → redirect to appropriate dashboard
+  if (user && (pathname === "/login" || pathname === "/")) {
     const url = request.nextUrl.clone();
     url.pathname = profile?.role === "admin" ? "/admin" : "/evaluator";
     return NextResponse.redirect(url);
@@ -62,30 +66,11 @@ export async function updateSession(request: NextRequest) {
 
   // RBAC: evaluator trying to access admin routes
   if (user && pathname.startsWith("/admin")) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
     if (profile?.role !== "admin") {
       const url = request.nextUrl.clone();
       url.pathname = "/evaluator";
       return NextResponse.redirect(url);
     }
-  }
-
-  // Root path → redirect based on role
-  if (user && pathname === "/") {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    const url = request.nextUrl.clone();
-    url.pathname = profile?.role === "admin" ? "/admin" : "/evaluator";
-    return NextResponse.redirect(url);
   }
 
   return supabaseResponse;

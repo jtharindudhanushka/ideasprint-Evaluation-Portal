@@ -66,7 +66,7 @@ export default function UploadProposalsPage() {
   };
 
   const downloadTemplate = () => {
-    const templateContent = "team_name,product_name,description,proposal_url,video_url\nExample Team,SmartLearn AI,An AI-powered learning system,https://drive.google.com/file/...,https://youtube.com/watch?...";
+    const templateContent = "team_name,product_name,description,drive_link,yt_link\nExample Team,SmartLearn AI,An AI-powered learning system,https://drive.google.com/file/...,https://youtube.com/watch?...";
     const blob = new Blob([templateContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
@@ -90,27 +90,67 @@ export default function UploadProposalsPage() {
       complete: async (results) => {
         const rows = results.data as any[];
         
-        // Basic validation
         if (rows.length === 0) {
           toast.error("The CSV file is empty");
           setBulkLoading(false);
           return;
         }
 
-        if (!("team_name" in rows[0]) || !("product_name" in rows[0])) {
-          toast.error("Invalid CSV format. Missing required columns 'team_name' and 'product_name'");
+        // Get headers from the first row to check for case-insensitive matches
+        const headers = Object.keys(rows[0]);
+        const findHeader = (target: string) => headers.find(h => h.toLowerCase() === target.toLowerCase());
+
+        const teamNameHeader = findHeader("team_name");
+        const driveLinkHeader = findHeader("drive_link");
+        const ytLinkHeader = findHeader("yt_link");
+        const productNameHeader = findHeader("product_name");
+        const descriptionHeader = findHeader("description");
+
+        if (!teamNameHeader || !driveLinkHeader || !ytLinkHeader) {
+          const missing = [];
+          if (!teamNameHeader) missing.push("'team_name'");
+          if (!driveLinkHeader) missing.push("'drive_link'");
+          if (!ytLinkHeader) missing.push("'yt_link'");
+          toast.error(`Invalid CSV format. Missing required columns: ${missing.join(", ")}`);
           setBulkLoading(false);
           return;
         }
 
-        // Format for DB
-        const proposalsToInsert = rows.map((row) => ({
-          team_name: row.team_name,
-          product_name: row.product_name,
-          description: row.description || null,
-          proposal_url: row.proposal_url || null,
-          video_url: row.video_url || null,
-        })).filter(p => p.team_name && p.product_name); // Skip completely empty required rows
+        const proposalsToInsert = [];
+        const errors: string[] = [];
+
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          const rowNum = i + 1;
+          const teamName = row[teamNameHeader as string]?.trim();
+          const driveLink = row[driveLinkHeader as string]?.trim();
+          const ytLink = row[ytLinkHeader as string]?.trim();
+
+          const missingFields = [];
+          if (!teamName) missingFields.push("team_name");
+          if (!driveLink) missingFields.push("drive_link");
+          if (!ytLink) missingFields.push("yt_link");
+
+          if (missingFields.length > 0) {
+            errors.push(`Row ${rowNum}: Missing ${missingFields.join(", ")}`);
+            continue;
+          }
+
+          proposalsToInsert.push({
+            team_name: teamName,
+            product_name: row[productNameHeader as string]?.trim() || "Untitled Product",
+            description: row[descriptionHeader as string]?.trim() || "",
+            proposal_url: driveLink,
+            video_url: ytLink,
+          });
+        }
+
+        if (errors.length > 0) {
+          const errorMsg = errors.slice(0, 3).join("\n") + (errors.length > 3 ? `\n...and ${errors.length - 3} more errors` : "");
+          toast.error(`Validation Failed:\n${errorMsg}`, { duration: 5000 });
+          setBulkLoading(false);
+          return;
+        }
 
         const { error } = await supabase.from("proposals").insert(proposalsToInsert);
 
@@ -132,87 +172,91 @@ export default function UploadProposalsPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-6)", maxWidth: 1024, margin: "0 auto" }}>
       <div>
-        <h2 className="text-3xl font-bold tracking-tight">Upload Proposals</h2>
-        <p className="text-muted-foreground mt-2">
+        <h2 style={{ fontFamily: "var(--bw-font-heading)", fontSize: "var(--bw-fs-h1)", fontWeight: "var(--bw-fw-bold)" as any, lineHeight: "var(--bw-lh-tight)", color: "var(--bw-content-primary)" }}>Upload Proposals</h2>
+        <p style={{ marginTop: "var(--bw-space-2)", fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-secondary)" }}>
           Add team proposals for the evaluation portal via single entry or bulk CSV.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid gap-8 lg:grid-cols-2">
         
-        {/* Single Upload Section */}
-        <Card>
-          <CardHeader className="flex flex-row items-center gap-2 pb-4">
-            <Upload className="w-5 h-5 text-muted-foreground" />
-            <CardTitle>Single Upload</CardTitle>
+        <Card variant="flat">
+          <CardHeader style={{ padding: "var(--bw-space-6) var(--bw-space-6) var(--bw-space-4)", borderBottom: "1px solid var(--bw-border)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-3)" }}>
+              <Upload size={18} style={{ color: "var(--bw-content-tertiary)" }} />
+              <CardTitle style={{ fontSize: "var(--bw-fs-h4)" }}>Single Upload</CardTitle>
+            </div>
           </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSingleSubmit} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
+          <CardContent style={{ padding: "var(--bw-space-6)" }}>
+            <form onSubmit={handleSingleSubmit} style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-4)" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)" }}>
                 <Label htmlFor="proposal-team-name">Team Name</Label>
-                <div className="relative">
-                  <Type className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                <div style={{ position: "relative" }}>
+                  <Type size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--bw-content-disabled)", pointerEvents: "none" }} />
                   <Input
                     id="proposal-team-name"
                     placeholder="Team Innovators"
                     value={teamName}
                     onChange={(e) => setTeamName(e.target.value)}
                     required
-                    className="pl-9"
+                    style={{ paddingLeft: 36 }}
+                    pill
                   />
                 </div>
               </div>
-              <div className="flex flex-col gap-2">
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)" }}>
                 <Label htmlFor="proposal-product-name">Product Name</Label>
-                <div className="relative">
-                  <Package className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                <div style={{ position: "relative" }}>
+                  <Package size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--bw-content-disabled)", pointerEvents: "none" }} />
                   <Input
                     id="proposal-product-name"
                     placeholder="SmartLearn AI"
                     value={productName}
                     onChange={(e) => setProductName(e.target.value)}
                     required
-                    className="pl-9"
+                    style={{ paddingLeft: 36 }}
+                    pill
                   />
                 </div>
               </div>
-              <div className="flex flex-col gap-2">
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)" }}>
                 <Label htmlFor="proposal-description">Description</Label>
                 <Textarea
                   id="proposal-description"
                   placeholder="A brief description of the team's proposal..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="min-h-[100px]"
                 />
               </div>
-              <div className="flex flex-col gap-2">
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)" }}>
                 <Label htmlFor="proposal-pdf-url">Proposal PDF Link</Label>
-                <div className="relative">
-                  <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                <div style={{ position: "relative" }}>
+                  <FileText size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--bw-content-disabled)", pointerEvents: "none" }} />
                   <Input
                     id="proposal-pdf-url"
                     placeholder="https://drive.google.com/file/d/..."
                     value={proposalUrl}
                     onChange={(e) => setProposalUrl(e.target.value)}
                     type="url"
-                    className="pl-9"
+                    style={{ paddingLeft: 36 }}
+                    pill
                   />
                 </div>
               </div>
-              <div className="flex flex-col gap-2">
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)" }}>
                 <Label htmlFor="proposal-video-url">Pitch Video Link</Label>
-                <div className="relative">
-                  <Video className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                <div style={{ position: "relative" }}>
+                  <Video size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--bw-content-disabled)", pointerEvents: "none" }} />
                   <Input
                     id="proposal-video-url"
                     placeholder="https://youtube.com/watch?v=..."
                     value={videoUrl}
                     onChange={(e) => setVideoUrl(e.target.value)}
                     type="url"
-                    className="pl-9"
+                    style={{ paddingLeft: 36 }}
+                    pill
                   />
                 </div>
               </div>
@@ -220,41 +264,43 @@ export default function UploadProposalsPage() {
                 id="proposal-submit"
                 type="submit"
                 disabled={loading}
-                className="mt-2 w-full"
+                style={{ marginTop: "var(--bw-space-2)", width: "100%" }}
               >
-                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {loading && <Loader2 size={16} style={{ marginRight: 8, animation: "spin 1s linear infinite" }} />}
                 {loading ? "Uploading..." : "Upload Proposal"}
               </Button>
             </form>
           </CardContent>
         </Card>
 
-        {/* Bulk Upload Section */}
-        <Card className="h-fit">
-          <CardHeader className="flex flex-row items-center gap-2 pb-4">
-            <FileSpreadsheet className="w-5 h-5 text-muted-foreground" />
-            <CardTitle>Bulk CSV Upload</CardTitle>
+        <Card variant="flat" style={{ alignSelf: "start" }}>
+          <CardHeader style={{ padding: "var(--bw-space-6) var(--bw-space-6) var(--bw-space-4)", borderBottom: "1px solid var(--bw-border)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-3)" }}>
+              <FileSpreadsheet size={18} style={{ color: "var(--bw-content-tertiary)" }} />
+              <CardTitle style={{ fontSize: "var(--bw-fs-h4)" }}>Bulk CSV Upload</CardTitle>
+            </div>
           </CardHeader>
-          <CardContent className="flex flex-col gap-6">
+          <CardContent style={{ padding: "var(--bw-space-6)", display: "flex", flexDirection: "column", gap: "var(--bw-space-6)" }}>
             
-            <div className="rounded-lg border bg-muted/50 p-4">
-              <h3 className="font-semibold text-foreground mb-2">Instructions</h3>
-              <ul className="text-sm text-muted-foreground list-disc pl-4 space-y-1 mb-4">
+            <div style={{ borderRadius: "var(--bw-radius-md)", border: "1px solid var(--bw-border)", background: "var(--bw-chip)", padding: "var(--bw-space-4)" }}>
+              <h3 style={{ fontWeight: "var(--bw-fw-medium)" as any, color: "var(--bw-content-primary)", marginBottom: "var(--bw-space-2)" }}>Instructions</h3>
+              <ul style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-secondary)", paddingLeft: "var(--bw-space-4)", marginBottom: "var(--bw-space-4)", display: "flex", flexDirection: "column", gap: "var(--bw-space-1)", listStyleType: "disc" }}>
                 <li>Download the template below.</li>
                 <li>Fill in the rows without modifying the header row.</li>
-                <li><span className="font-medium text-foreground">team_name</span> and <span className="font-medium text-foreground">product_name</span> are required.</li>
+                <li>Mandatory fields: <span style={{ fontWeight: "var(--bw-fw-medium)" as any, color: "var(--bw-content-primary)" }}>team_name</span>, <span style={{ fontWeight: "var(--bw-fw-medium)" as any, color: "var(--bw-content-primary)" }}>drive_link</span>, and <span style={{ fontWeight: "var(--bw-fw-medium)" as any, color: "var(--bw-content-primary)" }}>yt_link</span>.</li>
+                <li><span style={{ fontWeight: "var(--bw-fw-medium)" as any, color: "var(--bw-content-primary)" }}>product_name</span> and <span style={{ fontWeight: "var(--bw-fw-medium)" as any, color: "var(--bw-content-primary)" }}>description</span> are optional.</li>
                 <li>Save as a .csv file and upload.</li>
               </ul>
               <Button 
-                variant="outline" 
-                className="w-full"
+                variant="secondary" 
+                style={{ width: "100%" }}
                 onClick={downloadTemplate}
               >
-                <Download className="mr-2 h-4 w-4" /> Download Demo Template
+                <Download size={16} style={{ marginRight: 8 }} /> Download Demo Template
               </Button>
             </div>
 
-            <div className="flex flex-col gap-2">
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)" }}>
               <Label>Select CSV File</Label>
               <Input
                 type="file"
@@ -262,9 +308,10 @@ export default function UploadProposalsPage() {
                 ref={fileInputRef}
                 onChange={handleBulkUpload}
                 disabled={bulkLoading}
-                className="cursor-pointer"
+                style={{ cursor: "pointer" }}
+                pill
               />
-              {bulkLoading && <p className="text-sm text-muted-foreground animate-pulse mt-2 flex items-center"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Processing and uploading data...</p>}
+              {bulkLoading && <p style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-disabled)", marginTop: "var(--bw-space-2)", display: "flex", alignItems: "center", animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite" }}><Loader2 size={16} style={{ marginRight: 8, animation: "spin 1s linear infinite" }} />Processing and uploading data...</p>}
             </div>
 
           </CardContent>

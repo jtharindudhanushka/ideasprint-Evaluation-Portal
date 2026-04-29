@@ -1,58 +1,100 @@
-import { Button as ButtonPrimitive } from "@base-ui/react/button"
-import { cva, type VariantProps } from "class-variance-authority"
+import * as React from "react";
 
-import { cn } from "@/lib/utils"
+/* ═══════════════════════════════════════════════════════════
+   Button — Base Web Style
+   Pill-shaped, high-contrast, multiple variants
+   ═══════════════════════════════════════════════════════════ */
 
-const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-  {
-    variants: {
-      variant: {
-        default: "bg-primary text-primary-foreground [a]:hover:bg-primary/80",
-        outline:
-          "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
-        secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80 aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
-        ghost:
-          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
-        destructive:
-          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
-        link: "text-primary underline-offset-4 hover:underline",
-      },
-      size: {
-        default:
-          "h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
-        xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
-        sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
-        lg: "h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
-        icon: "size-8",
-        "icon-xs":
-          "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
-        "icon-sm":
-          "size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
-        "icon-lg": "size-9",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
-  }
-)
+export type ButtonVariant = "primary" | "secondary" | "tertiary" | "ghost" | "destructive";
+export type ButtonSize = "sm" | "md" | "lg" | "icon" | "icon-sm" | "icon-xs";
 
-function Button({
-  className,
-  variant = "default",
-  size = "default",
-  ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
-  return (
-    <ButtonPrimitive
-      data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
-      {...props}
-    />
-  )
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  asChild?: boolean;
 }
 
-export { Button, buttonVariants }
+const variantStyles: Record<ButtonVariant, React.CSSProperties> = {
+  primary: {
+    background: "var(--bw-bg-inverse)",
+    color: "var(--bw-content-inverse)",
+    border: "none",
+  },
+  secondary: {
+    background: "var(--bw-bg-primary)",
+    color: "var(--bw-content-primary)",
+    border: "1px solid var(--bw-border-strong)",
+  },
+  tertiary: {
+    background: "var(--bw-chip)",
+    color: "var(--bw-content-primary)",
+    border: "none",
+  },
+  ghost: {
+    background: "transparent",
+    color: "var(--bw-content-primary)",
+    border: "none",
+  },
+  destructive: {
+    background: "var(--bw-negative)",
+    color: "#ffffff",
+    border: "none",
+  },
+};
+
+const sizeStyles: Record<ButtonSize, React.CSSProperties> = {
+  sm: { padding: "6px 12px", fontSize: "var(--bw-fs-sm)", height: "32px" },
+  md: { padding: "10px 16px", fontSize: "var(--bw-fs-base)", height: "40px" },
+  lg: { padding: "14px 20px", fontSize: "var(--bw-fs-base)", height: "48px" },
+  icon: { padding: "8px", width: "36px", height: "36px", fontSize: "var(--bw-fs-base)" },
+  "icon-sm": { padding: "4px", width: "28px", height: "28px", fontSize: "var(--bw-fs-sm)" },
+  "icon-xs": { padding: "2px", width: "24px", height: "24px", fontSize: "var(--bw-fs-xs)" },
+};
+
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ variant = "primary", size = "md", className = "", style, disabled, children, ...props }, ref) => {
+    const vs = variantStyles[variant];
+    const ss = sizeStyles[size];
+
+    return (
+      <button
+        ref={ref}
+        disabled={disabled}
+        className={`bw-button bw-button--${variant} bw-button--${size} ${className}`}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "6px",
+          fontFamily: "var(--bw-font-body)",
+          fontWeight: "var(--bw-fw-medium)" as any,
+          lineHeight: "1",
+          borderRadius: size === "icon" || size === "icon-sm" || size === "icon-xs" ? "var(--bw-radius-circle)" : "var(--bw-radius-pill)",
+          cursor: disabled ? "not-allowed" : "pointer",
+          transition: `all var(--bw-duration-normal) var(--bw-easing)`,
+          opacity: disabled ? 0.5 : 1,
+          whiteSpace: "nowrap",
+          textDecoration: "none",
+          ...vs,
+          ...ss,
+          ...style,
+        }}
+        {...props}
+      >
+        {children}
+      </button>
+    );
+  }
+);
+Button.displayName = "Button";
+
+/* Helper to generate className-compatible buttonVariants for <a> tags */
+function buttonVariants({
+  variant = "primary" as ButtonVariant,
+  size = "md" as ButtonSize,
+  className = "",
+}: { variant?: ButtonVariant; size?: ButtonSize; className?: string } = {}) {
+  return `bw-button bw-button--${variant} bw-button--${size} ${className}`.trim();
+}
+
+export { Button, buttonVariants };

@@ -11,82 +11,110 @@ export default async function EvaluatorDashboardPage() {
 
   if (!user) redirect("/login");
 
-  const { data: proposals } = await supabase
-    .from("proposals")
-    .select("*")
-    .order("created_at", { ascending: false });
+  const [
+    { data: proposals },
+    { data: allEvaluations },
+    { data: profiles },
+    { data: assignments },
+    { data: settings }
+  ] = await Promise.all([
+    supabase
+      .from("proposals")
+      .select("*")
+      .order("created_at", { ascending: false }),
+    // Fetch ALL evaluations so we can display per-evaluator scores
+    supabase
+      .from("evaluations")
+      .select(`
+        proposal_id,
+        evaluator_id,
+        rubric_criterion_id,
+        score,
+        rubric_criteria (
+          name,
+          max_score
+        )
+      `),
+    supabase
+      .from("profiles")
+      .select("id, full_name"),
+    supabase
+      .from("proposal_assignments")
+      .select("*"),
+    supabase
+      .from("system_settings")
+      .select("*")
+      .eq("key", "evaluation_deadline")
+      .single()
+  ]);
 
-  // Fetch all evaluations (with evaluator_id) for the breakdown popup & "evaluated by" info
-  const { data: evaluations } = await supabase
-    .from("evaluations")
-    .select(`
-      proposal_id,
-      evaluator_id,
-      rubric_criterion_id,
-      score,
-      rubric_criteria (
-        name,
-        max_score
-      )
-    `);
+  let daysLeft = "14";
+  if (settings?.value) {
+    const deadlineDate = new Date(settings.value as string);
+    const diff = deadlineDate.getTime() - Date.now();
+    daysLeft = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24))).toString();
+  }
+
+  // My evaluations only
+  const myEvaluations = allEvaluations?.filter((e) => e.evaluator_id === user!.id) ?? [];
 
   // Get unique proposal IDs that this evaluator has graded
   const gradedProposalIds = [
-    ...new Set(
-      evaluations
-        ?.filter((e) => e.evaluator_id === user!.id)
-        .map((e) => e.proposal_id) ?? []
-    ),
+    ...new Set(myEvaluations.map((e) => e.proposal_id)),
   ];
 
-  // Build breakdown for this evaluator's own scores only, deduped by criterion
+  // Build breakdown for this evaluator's own scores only (for full rubric display)
   const breakdownData: Record<string, any[]> = {};
-  if (evaluations) {
-    // Only include the current evaluator's evaluations
-    const mine = evaluations.filter((e) => e.evaluator_id === user!.id);
+  const accumulator: Record<string, Map<string, { name: string; score: number; max_score: number }>> = {};
+  myEvaluations.forEach((ev) => {
+    const criteria = Array.isArray(ev.rubric_criteria) ? ev.rubric_criteria[0] : ev.rubric_criteria;
+    if (!criteria) return;
 
-    // Deduplicate by rubric_criterion_id per proposal (take the latest score)
-    const accumulator: Record<string, Map<string, { name: string; score: number; max_score: number }>> = {};
-    mine.forEach((ev) => {
-      const criteria = Array.isArray(ev.rubric_criteria) ? ev.rubric_criteria[0] : ev.rubric_criteria;
-      if (!criteria) return;
-
-      if (!accumulator[ev.proposal_id]) {
-        accumulator[ev.proposal_id] = new Map();
-      }
-      // Overwrite so last write wins — handles any accidental duplicates
-      accumulator[ev.proposal_id].set(ev.rubric_criterion_id, {
-        name: (criteria as any).name,
-        score: ev.score,
-        max_score: (criteria as any).max_score,
-      });
+    if (!accumulator[ev.proposal_id]) {
+      accumulator[ev.proposal_id] = new Map();
+    }
+    accumulator[ev.proposal_id].set(ev.rubric_criterion_id, {
+      name: (criteria as any).name,
+      score: ev.score,
+      max_score: (criteria as any).max_score,
     });
+  });
+  for (const [proposalId, criteriaMap] of Object.entries(accumulator)) {
+    breakdownData[proposalId] = Array.from(criteriaMap.values());
+  }
 
-    for (const [proposalId, criteriaMap] of Object.entries(accumulator)) {
-      breakdownData[proposalId] = Array.from(criteriaMap.values());
+  // Build per-evaluator score totals per proposal: proposalId -> { evaluatorId -> { name, total } }
+  const scoresByProposal: Record<string, Record<string, { name: string; total: number }>> = {};
+  if (allEvaluations && profiles) {
+    const evaluatorMap = new Map(profiles.map((p) => [p.id, p.full_name]));
+    const perEvalTotals: Record<string, Record<string, number>> = {};
+    for (const ev of allEvaluations) {
+      if (!perEvalTotals[ev.proposal_id]) perEvalTotals[ev.proposal_id] = {};
+      perEvalTotals[ev.proposal_id][ev.evaluator_id] = (perEvalTotals[ev.proposal_id][ev.evaluator_id] ?? 0) + ev.score;
+    }
+    for (const [proposalId, evalTotals] of Object.entries(perEvalTotals)) {
+      scoresByProposal[proposalId] = {};
+      for (const [evalId, total] of Object.entries(evalTotals)) {
+        const name = evaluatorMap.get(evalId) ?? "Unknown";
+        scoresByProposal[proposalId][evalId] = { name, total };
+      }
     }
   }
 
-  // Fetch profiles for lock info and "evaluated by" pill
-  const { data: profiles } = await supabase.from("profiles").select("id, full_name");
-
-  // Build a map: proposalId -> array of evaluator full_names (from the evaluator_id in evaluations)
+  // Build a map: proposalId -> array of evaluator full_names (for "Evaluated by" pills)
   const evaluatorByProposal: Record<string, string[]> = {};
-  if (evaluations && profiles) {
-    for (const ev of evaluations) {
+  if (allEvaluations && profiles) {
+    const evaluatorMap = new Map(profiles.map((p) => [p.id, p.full_name]));
+    for (const ev of allEvaluations) {
       if (!evaluatorByProposal[ev.proposal_id]) {
         evaluatorByProposal[ev.proposal_id] = [];
       }
-      const profile = profiles.find((p) => p.id === ev.evaluator_id);
-      if (profile && !evaluatorByProposal[ev.proposal_id].includes(profile.full_name)) {
-        evaluatorByProposal[ev.proposal_id].push(profile.full_name);
+      const fullName = evaluatorMap.get(ev.evaluator_id);
+      if (fullName && !evaluatorByProposal[ev.proposal_id].includes(fullName)) {
+        evaluatorByProposal[ev.proposal_id].push(fullName);
       }
     }
   }
-
-  const { data: assignments } = await supabase
-    .from("proposal_assignments")
-    .select("*");
 
   return (
     <EvaluatorDashboardClient
@@ -96,9 +124,10 @@ export default async function EvaluatorDashboardPage() {
       profiles={profiles ?? []}
       breakdownData={breakdownData}
       evaluatorByProposal={evaluatorByProposal}
+      scoresByProposal={scoresByProposal}
       assignments={assignments ?? []}
       serverNow={new Date().toISOString()}
+      daysLeft={daysLeft}
     />
   );
 }
-

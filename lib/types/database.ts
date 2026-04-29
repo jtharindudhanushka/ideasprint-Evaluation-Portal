@@ -65,6 +65,39 @@ export interface ProposalAssignment {
   created_at: string;
 }
 
+export interface PdfAnnotation {
+  id: string;
+  proposal_id: string;
+  evaluator_id: string;
+  page_number: number;
+  start_offset: number;
+  end_offset: number;
+  rect_x: number;
+  rect_y: number;
+  rect_width: number;
+  rect_height: number;
+  color: string;
+  comment: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VideoComment {
+  id: string;
+  proposal_id: string;
+  evaluator_id: string;
+  timestamp_secs: number;
+  comment: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SystemSetting {
+  key: string;
+  value: any;
+  updated_at: string;
+}
+
 // Form types
 export interface ProposalFormData {
   team_name: string;

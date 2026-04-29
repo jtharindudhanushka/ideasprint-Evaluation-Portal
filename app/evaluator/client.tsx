@@ -16,7 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Tooltip,
@@ -41,6 +41,10 @@ import {
   Edit,
   BarChart,
   Loader2,
+  CalendarDays,
+  Hourglass,
+  ClipboardList,
+  ChevronDown,
 } from "lucide-react";
 import type { Proposal, Profile, ProposalAssignment } from "@/lib/types/database";
 import Link from "next/link";
@@ -53,8 +57,10 @@ interface Props {
   profiles: Pick<Profile, "id" | "full_name">[];
   breakdownData?: Record<string, any[]>;
   evaluatorByProposal?: Record<string, string[]>;
+  scoresByProposal?: Record<string, Record<string, { name: string; total: number }>>;
   assignments: ProposalAssignment[];
   serverNow?: string;
+  daysLeft?: string;
 }
 
 export function EvaluatorDashboardClient({
@@ -62,8 +68,11 @@ export function EvaluatorDashboardClient({
   currentUserId,
   gradedProposalIds,
   profiles,
+  breakdownData,
   evaluatorByProposal = {},
+  scoresByProposal = {},
   assignments = [],
+  daysLeft = "14",
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -72,11 +81,16 @@ export function EvaluatorDashboardClient({
   const [showOnlyPending, setShowOnlyPending] = useState(false);
   const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
 
-  // Show error toast if redirected from evaluate page due to non-assignment
+  // All Proposals Pagination & Filter state
+  const [allProposalsPage, setAllProposalsPage] = useState(1);
+  const [allProposalsFilter, setAllProposalsFilter] = useState<"all" | "graded" | "assigned">("all");
+  const [filterByEvaluator, setFilterByEvaluator] = useState<string>("all");
+  const [showGradedOnly, setShowGradedOnly] = useState(false);
+  const itemsPerPage = 10;
+
   useEffect(() => {
     if (searchParams.get("error") === "not_assigned") {
       toast.error("You are not assigned to evaluate that proposal.");
-      // Clean up the URL
       router.replace("/evaluator");
     }
   }, [searchParams, router]);
@@ -86,7 +100,10 @@ export function EvaluatorDashboardClient({
     router.push(`/evaluator/evaluate/${proposalId}`);
   };
 
-  // Map proposal to its assigned evaluators
+  const evaluatorMap = useMemo(() => {
+    return new Map(profiles.map((p) => [p.id, p.full_name]));
+  }, [profiles]);
+
   const assigneesByProposal = useMemo(() => {
     const map: Record<string, string[]> = {};
     assignments.forEach(a => {
@@ -96,7 +113,6 @@ export function EvaluatorDashboardClient({
     return map;
   }, [assignments]);
 
-  // Split proposals: mine vs others
   const myAssignments = useMemo(
     () => proposals.filter((p) => assigneesByProposal[p.id]?.includes(currentUserId)),
     [proposals, assigneesByProposal, currentUserId]
@@ -104,7 +120,6 @@ export function EvaluatorDashboardClient({
 
   const allProposals = proposals;
 
-  // Filter my assignments
   const filteredAssignments = useMemo(() => {
     let result = myAssignments;
     if (showOnlyPending) result = result.filter((p) => !gradedProposalIds.includes(p.id));
@@ -120,19 +135,63 @@ export function EvaluatorDashboardClient({
     return result;
   }, [myAssignments, searchQuery, showOnlyPending, gradedProposalIds]);
 
-  // Filter all proposals table
   const filteredAll = useMemo(() => {
-    if (!searchQueryAll) return allProposals;
-    const q = searchQueryAll.toLowerCase();
-    return allProposals.filter(
-      (p) =>
-        p.team_name.toLowerCase().includes(q) ||
-        p.product_name.toLowerCase().includes(q) ||
-        (p.description && p.description.toLowerCase().includes(q))
-    );
-  }, [allProposals, searchQueryAll]);
+    let result = allProposals;
+    
+    if (allProposalsFilter === "graded") {
+      result = result.filter(p => p.is_graded);
+    } else if (allProposalsFilter === "assigned") {
+      result = result.filter(p => (assigneesByProposal[p.id] || []).length > 0);
+    }
 
-  // Top 15 Teams
+    if (showGradedOnly) {
+      result = result.filter(p => p.is_graded);
+    }
+
+    if (filterByEvaluator !== "all") {
+      result = result.filter(p => {
+        const assignees = assigneesByProposal[p.id] || [];
+        return assignees.includes(filterByEvaluator);
+      });
+    }
+    
+    if (searchQueryAll) {
+      const q = searchQueryAll.toLowerCase();
+      result = result.filter(
+        (p) =>
+          p.team_name.toLowerCase().includes(q) ||
+          p.product_name.toLowerCase().includes(q) ||
+          (p.description && p.description.toLowerCase().includes(q))
+      );
+    }
+    return result;
+  }, [allProposals, searchQueryAll, allProposalsFilter, showGradedOnly, filterByEvaluator, assigneesByProposal]);
+
+  const paginatedAll = useMemo(() => {
+    const start = (allProposalsPage - 1) * itemsPerPage;
+    return filteredAll.slice(start, start + itemsPerPage);
+  }, [filteredAll, allProposalsPage, itemsPerPage]);
+
+  const totalAllPages = Math.ceil(filteredAll.length / itemsPerPage);
+
+  // Unique evaluator names for filter dropdown
+  const uniqueEvaluatorNames = useMemo(() => {
+    const names: { id: string; name: string }[] = [];
+    const seen = new Set<string>();
+    profiles.forEach(p => {
+      if (!seen.has(p.id)) {
+        seen.add(p.id);
+        names.push({ id: p.id, name: p.full_name });
+      }
+    });
+    return names;
+  }, [profiles]);
+
+  // Reset page when filter or search changes
+  useEffect(() => {
+    setAllProposalsPage(1);
+  }, [searchQueryAll, allProposalsFilter, showGradedOnly, filterByEvaluator]);
+
   const topTeams = useMemo(() => {
     return proposals
       .filter((p) => p.is_graded)
@@ -143,75 +202,88 @@ export function EvaluatorDashboardClient({
   const renderBreakdownDialog = (
     proposal: Proposal,
     triggerContent: React.ReactNode,
-    triggerClassName: string
+    isButton?: boolean
   ) => {
     const isGradedByMe = gradedProposalIds.includes(proposal.id);
-    const evaluatedByList = evaluatorByProposal[proposal.id] || [];
+    // Other evaluators' scores (privacy: only show total, never rubric)
+    const otherEvalScores = Object.entries(scoresByProposal[proposal.id] ?? {})
+      .filter(([evalId]) => evalId !== currentUserId);
+    const myScore = scoresByProposal[proposal.id]?.[currentUserId];
 
     return (
       <Dialog>
-        <DialogTrigger className={triggerClassName}>
-          {triggerContent}
+        <DialogTrigger
+          style={isButton ? undefined : { background: "none", border: "none", cursor: "pointer", color: "var(--bw-content-tertiary)", padding: 4, borderRadius: "var(--bw-radius-circle)", display: "flex" }}
+        >
+          {isButton ? <Button variant="secondary" size="sm">{triggerContent}</Button> : triggerContent}
         </DialogTrigger>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Details: {proposal.team_name}</DialogTitle>
+          <DialogTitle style={{ fontSize: "var(--bw-fs-h4)" }}>{proposal.team_name}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="flex items-center justify-between font-medium bg-muted/50 p-3 rounded-lg">
-              <span>Total Score</span>
-              <span className="text-xl font-bold">{proposal.total_score}/100</span>
+          <div style={{ padding: "0 var(--bw-space-6) var(--bw-space-6)", display: "flex", flexDirection: "column", gap: "var(--bw-space-4)" }}>
+            {/* Average total score */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bw-chip)", padding: "var(--bw-space-3) var(--bw-space-4)", borderRadius: "var(--bw-radius-md)" }}>
+              <span style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-secondary)" }}>Average Score</span>
+              <span style={{ fontSize: "var(--bw-fs-h3)", fontWeight: "var(--bw-fw-bold)" as any }}>{proposal.total_score}/100</span>
             </div>
 
-            {evaluatedByList.length > 0 && (
-              <div className="flex flex-col gap-1.5">
-                <span className="text-xs text-muted-foreground">Evaluated by</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {evaluatedByList.map((name, i) => (
-                    <span key={i} className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
-                      {name}
-                    </span>
-                  ))}
-                </div>
+            {/* Per-evaluator totals (no rubric detail for others) */}
+            {(isGradedByMe || otherEvalScores.length > 0) && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)" }}>
+                <div style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-tertiary)", fontWeight: "var(--bw-fw-medium)" as any }}>Evaluator Scores</div>
+                {/* My score row */}
+                {isGradedByMe && myScore && (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "var(--bw-space-2) var(--bw-space-3)", borderRadius: "var(--bw-radius-sm)", background: "var(--bw-hover-light)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-2)" }}>
+                      <Badge variant="secondary" style={{ fontSize: 10 }}>You</Badge>
+                    </div>
+                    <span style={{ fontWeight: "var(--bw-fw-bold)" as any, fontSize: "var(--bw-fs-sm)" }}>{myScore.total}/100</span>
+                  </div>
+                )}
+                {/* Other evaluators — only name + total */}
+                {otherEvalScores.map(([evalId, { name, total }]) => (
+                  <div key={evalId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "var(--bw-space-2) var(--bw-space-3)", borderRadius: "var(--bw-radius-sm)", border: "1px solid var(--bw-border)" }}>
+                    <span style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-secondary)" }}>{name}</span>
+                    <span style={{ fontWeight: "var(--bw-fw-medium)" as any, fontSize: "var(--bw-fs-sm)" }}>{total}/100</span>
+                  </div>
+                ))}
               </div>
             )}
 
-            <div className="flex flex-col gap-2 pt-2 border-t">
+            {/* Full rubric — only for own evaluation */}
+            {isGradedByMe && breakdownData?.[proposal.id] && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)", borderTop: "1px solid var(--bw-border)", paddingTop: "var(--bw-space-4)" }}>
+                <div style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-tertiary)", marginBottom: "var(--bw-space-1)" }}>Your Rubric Breakdown</div>
+                {breakdownData[proposal.id].map((criterion, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--bw-fs-sm)", padding: "var(--bw-space-2) 0", borderBottom: i < breakdownData![proposal.id].length - 1 ? "1px dashed var(--bw-border)" : "none" }}>
+                    <span style={{ color: "var(--bw-content-secondary)", paddingRight: 16 }}>{criterion.name}</span>
+                    <span style={{ fontWeight: "var(--bw-fw-medium)" as any }}>{criterion.score}/{criterion.max_score}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)", borderTop: "1px solid var(--bw-border)", paddingTop: "var(--bw-space-4)" }}>
               {proposal.proposal_url && (
-                <a
-                  href={proposal.proposal_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={buttonVariants({
-                    variant: "outline",
-                    className: "w-full justify-start",
-                  })}
-                >
-                  <FileText className="mr-2 h-4 w-4" /> View Proposal PDF
+                <a href={proposal.proposal_url} target="_blank" rel="noopener noreferrer">
+                  <Button variant="secondary" size="sm" style={{ width: "100%", justifyContent: "flex-start" }}>
+                    <FileText size={14} style={{ marginRight: 8 }} /> View Proposal PDF
+                  </Button>
                 </a>
               )}
               {proposal.video_url && (
-                <a
-                  href={proposal.video_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={buttonVariants({
-                    variant: "outline",
-                    className: "w-full justify-start",
-                  })}
-                >
-                  <ExternalLink className="mr-2 h-4 w-4" /> Watch Pitch Video
+                <a href={proposal.video_url} target="_blank" rel="noopener noreferrer">
+                  <Button variant="secondary" size="sm" style={{ width: "100%", justifyContent: "flex-start" }}>
+                    <ExternalLink size={14} style={{ marginRight: 8 }} /> Watch Pitch Video
+                  </Button>
                 </a>
               )}
               {isGradedByMe && (
-                <Link
-                  href={`/evaluator/evaluate/${proposal.id}`}
-                  className={buttonVariants({
-                    variant: "default",
-                    className: "w-full justify-start mt-2",
-                  })}
-                >
-                  <Edit className="mr-2 h-4 w-4" /> Edit Grading
+                <Link href={`/evaluator/evaluate/${proposal.id}`}>
+                  <Button size="sm" style={{ width: "100%", justifyContent: "flex-start", marginTop: "var(--bw-space-2)" }}>
+                    <Edit size={14} style={{ marginRight: 8 }} /> Edit Grading
+                  </Button>
                 </Link>
               )}
             </div>
@@ -223,65 +295,86 @@ export function EvaluatorDashboardClient({
 
   return (
     <TooltipProvider>
-      <div className="space-y-8">
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-6)" }}>
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Evaluator Dashboard</h2>
-          <p className="text-muted-foreground mt-2">
+          <h2 style={{ fontFamily: "var(--bw-font-heading)", fontSize: "var(--bw-fs-h1)", fontWeight: "var(--bw-fw-bold)" as any, lineHeight: "var(--bw-lh-tight)" }}>Evaluator Dashboard</h2>
+          <p style={{ marginTop: "var(--bw-space-2)", fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-secondary)" }}>
             Review and evaluate ideasprint 2026 proposals
           </p>
         </div>
 
-        {/* Quick Stats */}
-        <div className="grid grid-cols-3 gap-3 sm:gap-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">My Assignments</CardTitle>
-              <FileText className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{myAssignments.length}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Evaluated by You</CardTitle>
-              <ClipboardCheck className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{gradedProposalIds.length}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Remaining</CardTitle>
-              <FileText className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {myAssignments.filter((p) => !gradedProposalIds.includes(p.id)).length}
+        {/* Main Grid: Left (Cards + Assignments + All Proposals) | Right (Top 15) */}
+        <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
+          {/* LEFT COLUMN: cards + stacked tables */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-6)" }}>
+            {/* Quick Stats — Modern Icon Cards */}
+        <div className="grid gap-6 sm:grid-cols-3">
+          {/* My Assignments */}
+          <Card variant="flat" style={{ overflow: "hidden", position: "relative" }}>
+            <CardContent style={{ padding: "var(--bw-space-5)" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                <div>
+                  <p style={{ fontSize: "var(--bw-fs-xs)", fontWeight: "var(--bw-fw-medium)" as any, color: "var(--bw-content-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "var(--bw-space-2)" }}>My Assignments</p>
+                  <p style={{ fontSize: 32, fontWeight: "var(--bw-fw-bold)" as any, lineHeight: 1, letterSpacing: "-0.02em" }}>{myAssignments.length}</p>
+                  <p style={{ fontSize: "10px", color: "var(--bw-content-tertiary)", marginTop: "var(--bw-space-1)" }}>proposals to review</p>
+                </div>
+                <div style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--bw-chip)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <ClipboardCheck size={18} style={{ color: "var(--bw-content-primary)" }} />
+                </div>
               </div>
             </CardContent>
           </Card>
+
+          {/* Remaining */}
+          <Card variant="flat" style={{ overflow: "hidden", position: "relative" }}>
+            <CardContent style={{ padding: "var(--bw-space-5)" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                <div>
+                  <p style={{ fontSize: "var(--bw-fs-xs)", fontWeight: "var(--bw-fw-medium)" as any, color: "var(--bw-content-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "var(--bw-space-2)" }}>Remaining</p>
+                  <p style={{ fontSize: 32, fontWeight: "var(--bw-fw-bold)" as any, lineHeight: 1, letterSpacing: "-0.02em", color: myAssignments.filter(p => !gradedProposalIds.includes(p.id)).length > 0 ? "var(--bw-warning)" : "var(--bw-content-primary)" }}>
+                    {myAssignments.filter((p) => !gradedProposalIds.includes(p.id)).length}
+                  </p>
+                  <p style={{ fontSize: "10px", color: "var(--bw-content-tertiary)", marginTop: "var(--bw-space-1)" }}>yet to grade</p>
+                </div>
+                <div style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--bw-chip)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Hourglass size={18} style={{ color: "var(--bw-content-primary)" }} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Days Left */}
+          {(() => {
+            const days = parseInt(daysLeft) || 0;
+            const isUrgent = days <= 3;
+            return (
+              <Card variant="flat" style={{ overflow: "hidden", position: "relative" }}>
+                <CardContent style={{ padding: "var(--bw-space-5)" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                    <div>
+                      <p style={{ fontSize: "var(--bw-fs-xs)", fontWeight: "var(--bw-fw-medium)" as any, color: "var(--bw-content-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "var(--bw-space-2)" }}>Days Left</p>
+                      <p style={{ fontSize: 32, fontWeight: "var(--bw-fw-bold)" as any, lineHeight: 1, letterSpacing: "-0.02em", color: isUrgent ? "var(--bw-negative)" : "var(--bw-content-primary)" }}>{daysLeft}</p>
+                      <p style={{ fontSize: "10px", color: "var(--bw-content-tertiary)", marginTop: "var(--bw-space-1)" }}>until deadline</p>
+                    </div>
+                    <div style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--bw-chip)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <CalendarDays size={18} style={{ color: "var(--bw-content-primary)" }} />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
         </div>
 
-        {/* Split View */}
-        <div className="grid gap-6 xl:grid-cols-3">
-          {/* LEFT: My Assignments + All Proposals stacked */}
-          <div className="xl:col-span-2 space-y-6">
-
-            {/* Table 1: My Assignments */}
-            <Card>
-              <CardHeader>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <CardTitle>My Assignments</CardTitle>
-                  <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
-                    {/* Pending toggle */}
-                    <div className="flex items-center gap-3">
-                      <label
-                        htmlFor="pending-toggle"
-                        className="text-sm font-medium cursor-pointer select-none"
-                      >
-                        Show Pending Only
+{/* Table 1: My Assignments */}
+          <Card variant="flat" style={{ display: "flex", flexDirection: "column" }}>
+              <CardHeader style={{ padding: "var(--bw-space-6)" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "var(--bw-space-4)" }}>
+                  <CardTitle style={{ fontSize: "var(--bw-fs-h4)" }}>My Assignments</CardTitle>
+                  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "var(--bw-space-4)", width: "100%", maxWidth: 400 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-2)", marginLeft: "auto" }}>
+                      <label htmlFor="pending-toggle" style={{ fontSize: "var(--bw-fs-xs)", fontWeight: "var(--bw-fw-medium)" as any, cursor: "pointer", userSelect: "none", color: "var(--bw-content-secondary)" }}>
+                        Show Pending
                       </label>
                       <button
                         id="pending-toggle"
@@ -289,49 +382,59 @@ export function EvaluatorDashboardClient({
                         role="switch"
                         aria-checked={showOnlyPending}
                         onClick={() => setShowOnlyPending(!showOnlyPending)}
-                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
-                          showOnlyPending
-                            ? "bg-primary"
-                            : "bg-zinc-200 dark:bg-zinc-700"
-                        }`}
+                        style={{
+                          width: 32,
+                          height: 18,
+                          borderRadius: 20,
+                          background: showOnlyPending ? "var(--bw-black)" : "var(--bw-chip)",
+                          border: "none",
+                          position: "relative",
+                          cursor: "pointer",
+                        }}
                       >
-                        <span className="sr-only">Show pending only</span>
                         <span
-                          aria-hidden="true"
-                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                            showOnlyPending ? "translate-x-5" : "translate-x-0"
-                          }`}
+                          style={{
+                            position: "absolute",
+                            top: 2,
+                            left: showOnlyPending ? 16 : 2,
+                            width: 14,
+                            height: 14,
+                            borderRadius: "50%",
+                            background: showOnlyPending ? "var(--bw-white)" : "var(--bw-content-tertiary)",
+                            transition: "left 0.2s ease",
+                          }}
                         />
                       </button>
                     </div>
-                    <div className="relative w-full sm:w-56">
-                      <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <div style={{ position: "relative", flex: 1, minWidth: 150 }}>
+                      <Search size={16} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--bw-content-disabled)" }} />
                       <Input
                         type="search"
                         placeholder="Search..."
-                        className="w-full bg-background pl-8"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
+                        style={{ paddingLeft: 34 }}
+                        pill
                       />
                     </div>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="px-0 sm:px-6">
-                <div className="overflow-x-auto">
-                <Table>
+              <CardContent style={{ padding: "0 var(--bw-space-6) var(--bw-space-6)" }}>
+                <div style={{ overflowX: "auto", margin: "0 calc(var(--bw-space-6) * -1)" }}>
+                <Table style={{ minWidth: 700 }}>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Team &amp; Product</TableHead>
+                      <TableHead style={{ paddingLeft: "var(--bw-space-6)" }}>Team &amp; Product</TableHead>
                       <TableHead>Links</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Action</TableHead>
+                      <TableHead style={{ textAlign: "right", paddingRight: "var(--bw-space-6)" }}>Action</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredAssignments.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
+                        <TableCell colSpan={4} style={{ height: 96, textAlign: "center", color: "var(--bw-content-disabled)" }}>
                           {myAssignments.length === 0
                             ? "No proposals have been assigned to you yet."
                             : "No matching proposals."}
@@ -344,51 +447,39 @@ export function EvaluatorDashboardClient({
                         return (
                           <TableRow key={proposal.id}>
                             <TableCell>
-                              <div className="font-medium">{proposal.team_name}</div>
-                              <div className="text-xs text-muted-foreground">
+                              <div style={{ fontWeight: "var(--bw-fw-medium)" as any }}>{proposal.team_name}</div>
+                              <div style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-tertiary)" }}>
                                 {proposal.product_name}
                               </div>
                             </TableCell>
                             <TableCell>
-                              <div className="flex gap-2">
+                              <div style={{ display: "flex", gap: "var(--bw-space-2)" }}>
                                 {proposal.proposal_url && (
                                   <Tooltip>
-                                    <TooltipTrigger
-                                      render={
-                                        <a
-                                          href={proposal.proposal_url}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className={buttonVariants({
-                                            variant: "outline",
-                                            size: "icon",
-                                            className: "h-8 w-8",
-                                          })}
-                                        />
-                                      }
-                                    >
-                                      <FileText className="h-4 w-4" />
+                                    <TooltipTrigger asChild>
+                                      <a
+                                        href={proposal.proposal_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        style={{ display: "inline-flex", padding: 6, borderRadius: "var(--bw-radius-circle)", border: "1px solid var(--bw-border)", color: "var(--bw-content-secondary)", textDecoration: "none" }}
+                                      >
+                                        <FileText size={14} />
+                                      </a>
                                     </TooltipTrigger>
                                     <TooltipContent>View Proposal PDF</TooltipContent>
                                   </Tooltip>
                                 )}
                                 {proposal.video_url && (
                                   <Tooltip>
-                                    <TooltipTrigger
-                                      render={
-                                        <a
-                                          href={proposal.video_url}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className={buttonVariants({
-                                            variant: "outline",
-                                            size: "icon",
-                                            className: "h-8 w-8",
-                                          })}
-                                        />
-                                      }
-                                    >
-                                      <ExternalLink className="h-4 w-4" />
+                                    <TooltipTrigger asChild>
+                                      <a
+                                        href={proposal.video_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        style={{ display: "inline-flex", padding: 6, borderRadius: "var(--bw-radius-circle)", border: "1px solid var(--bw-border)", color: "var(--bw-content-secondary)", textDecoration: "none" }}
+                                      >
+                                        <ExternalLink size={14} />
+                                      </a>
                                     </TooltipTrigger>
                                     <TooltipContent>Watch Pitch Video</TooltipContent>
                                   </Tooltip>
@@ -397,37 +488,31 @@ export function EvaluatorDashboardClient({
                             </TableCell>
                             <TableCell>
                               {isGradedByMe ? (
-                                <Badge variant="default">Completed</Badge>
+                                <Badge variant="positive">Completed</Badge>
                               ) : navigatingTo === proposal.id ? (
-                                <Badge variant="secondary" className="animate-pulse">
+                                <Badge variant="secondary" style={{ animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite" }}>
                                   Entering...
                                 </Badge>
                               ) : (
-                                <Badge variant="outline">Available</Badge>
+                                <Badge variant="secondary">Available</Badge>
                               )}
                             </TableCell>
-                            <TableCell className="text-right">
+                            <TableCell style={{ textAlign: "right", paddingRight: "var(--bw-space-6)" }}>
                               {isGradedByMe ? (
-                                renderBreakdownDialog(
-                                  proposal,
-                                  "Details",
-                                  buttonVariants({ variant: "outline", size: "sm" })
-                                )
+                                renderBreakdownDialog(proposal, "Details", true)
                               ) : (
                                 <Button
+                                  variant="secondary"
                                   size="sm"
                                   disabled={navigatingTo === proposal.id}
-                                  className="inline-flex items-center gap-1"
                                   onClick={() => handleEvaluate(proposal.id)}
                                 >
                                   {navigatingTo === proposal.id ? (
-                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                    <Loader2 size={14} style={{ marginRight: 6, animation: "spin 1s linear infinite" }} />
                                   ) : (
-                                    <ClipboardCheck className="h-3 w-3" />
+                                    <ClipboardCheck size={14} style={{ marginRight: 6 }} />
                                   )}
-                                  {navigatingTo === proposal.id
-                                    ? "Loading..."
-                                    : "Evaluate"}
+                                  {navigatingTo === proposal.id ? "Loading..." : "Evaluate"}
                                 </Button>
                               )}
                             </TableCell>
@@ -441,110 +526,100 @@ export function EvaluatorDashboardClient({
               </CardContent>
             </Card>
 
-            {/* Table 2: All Proposals (view-only) */}
-            <Card>
-              <CardHeader>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+{/* Table 2: All Proposals */}
+            <Card variant="flat">
+              <CardHeader style={{ padding: "var(--bw-space-6)" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "var(--bw-space-3)" }}>
                   <div>
-                    <CardTitle>All Proposals</CardTitle>
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <CardTitle style={{ fontSize: "var(--bw-fs-h4)" }}>All Proposals</CardTitle>
+                    <p style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-tertiary)", marginTop: "var(--bw-space-1)" }}>
                       View-only — shows who is assigned and current scores
                     </p>
                   </div>
-                  <div className="relative w-full sm:w-56">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      type="search"
-                      placeholder="Search..."
-                      className="w-full bg-background pl-8"
-                      value={searchQueryAll}
-                      onChange={(e) => setSearchQueryAll(e.target.value)}
-                    />
+                </div>
+                {/* Inline filters row */}
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "var(--bw-space-3)", marginTop: "var(--bw-space-3)" }}>
+                  <div style={{ position: "relative", flex: 1, minWidth: 160 }}>
+                    <Search size={16} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--bw-content-disabled)" }} />
+                    <Input type="search" placeholder="Search teams..." value={searchQueryAll} onChange={(e) => setSearchQueryAll(e.target.value)} style={{ paddingLeft: 34 }} pill />
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-2)", flexShrink: 0 }}>
+                    <label htmlFor="graded-toggle" style={{ fontSize: "var(--bw-fs-xs)", fontWeight: "var(--bw-fw-medium)" as any, cursor: "pointer", userSelect: "none", color: "var(--bw-content-secondary)", whiteSpace: "nowrap" }}>Graded only</label>
+                    <button id="graded-toggle" type="button" role="switch" aria-checked={showGradedOnly} onClick={() => setShowGradedOnly(!showGradedOnly)} style={{ width: 32, height: 18, borderRadius: 20, background: showGradedOnly ? "var(--bw-black)" : "var(--bw-chip)", border: "none", position: "relative", cursor: "pointer" }}>
+                      <span style={{ position: "absolute", top: 2, left: showGradedOnly ? 16 : 2, width: 14, height: 14, borderRadius: "50%", background: showGradedOnly ? "var(--bw-white)" : "var(--bw-content-tertiary)", transition: "left 0.2s ease" }} />
+                    </button>
+                  </div>
+                  <div style={{ position: "relative", flexShrink: 0 }}>
+                    <select value={filterByEvaluator} onChange={(e) => setFilterByEvaluator(e.target.value)} style={{ appearance: "none", fontSize: "var(--bw-fs-xs)", fontWeight: "var(--bw-fw-medium)" as any, padding: "6px 28px 6px 12px", borderRadius: "var(--bw-radius-pill)", border: "1px solid var(--bw-border)", background: "var(--bw-bg-primary)", color: "var(--bw-content-primary)", cursor: "pointer", outline: "none", width: "100%" }}>
+                      <option value="all">All Evaluators</option>
+                      {uniqueEvaluatorNames.map(e => (<option key={e.id} value={e.id}>{e.name}</option>))}
+                    </select>
+                    <ChevronDown size={14} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "var(--bw-content-secondary)" }} />
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="px-0 sm:px-6">
-                <div className="overflow-x-auto">
-                <Table>
+              <CardContent style={{ padding: "0 var(--bw-space-6) var(--bw-space-6)" }}>
+                <div style={{ overflowX: "auto", margin: "0 calc(var(--bw-space-6) * -1)" }}>
+                <Table style={{ minWidth: 800 }}>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Team &amp; Product</TableHead>
+                      <TableHead style={{ paddingLeft: "var(--bw-space-6)" }}>Team &amp; Product</TableHead>
                       <TableHead>Assigned To</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Marks</TableHead>
-                      <TableHead className="text-right">Details</TableHead>
+                      <TableHead style={{ textAlign: "right" }}>Marks</TableHead>
+                      <TableHead style={{ textAlign: "right", paddingRight: "var(--bw-space-6)" }}>Details</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredAll.length === 0 ? (
+                    {paginatedAll.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="h-24 text-center">
+                        <TableCell colSpan={5} style={{ height: 96, textAlign: "center", color: "var(--bw-content-disabled)" }}>
                           No proposals found.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredAll.map((proposal) => {
+                      paginatedAll.map((proposal) => {
                         const assigneeIds = assigneesByProposal[proposal.id] || [];
                         const isMyProposal = assigneeIds.includes(currentUserId);
                         const isAssigned = assigneeIds.length > 0;
-                        const assigneeNames = assigneeIds.map(id => profiles.find(p => p.id === id)?.full_name || "Unknown");
+                        const assigneeNames = assigneeIds.map(id => evaluatorMap.get(id) || "Unknown");
 
                         return (
-                          <TableRow key={proposal.id} className={isMyProposal ? "bg-muted/20" : ""}>
+                          <TableRow key={proposal.id} style={{ backgroundColor: isMyProposal ? "var(--bw-hover-light)" : "transparent" }}>
                             <TableCell>
-                              <div className="font-medium">{proposal.team_name}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {proposal.product_name}
-                              </div>
+                              <div style={{ fontWeight: "var(--bw-fw-medium)" as any }}>{proposal.team_name}</div>
+                              <div style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-tertiary)" }}>{proposal.product_name}</div>
                             </TableCell>
                             <TableCell>
                               {isAssigned ? (
-                                <div className="flex flex-wrap gap-1">
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                                   {assigneeNames.map((name, i) => (
-                                    <span key={i} className={`text-sm ${isMyProposal && assigneeIds[i] === currentUserId ? "font-semibold text-primary" : "text-muted-foreground"}`}>
+                                    <span key={i} style={{ fontSize: "var(--bw-fs-sm)", color: isMyProposal && assigneeIds[i] === currentUserId ? "var(--bw-content-primary)" : "var(--bw-content-secondary)", fontWeight: isMyProposal && assigneeIds[i] === currentUserId ? "var(--bw-fw-bold)" as any : "var(--bw-fw-normal)" as any }}>
                                       {isMyProposal && assigneeIds[i] === currentUserId ? "You" : name}{i < assigneeNames.length - 1 ? "," : ""}
                                     </span>
                                   ))}
                                 </div>
                               ) : (
-                                <span className="text-sm text-muted-foreground italic">
-                                  Unassigned
-                                </span>
+                                <span style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-disabled)", fontStyle: "italic" }}>Unassigned</span>
                               )}
                             </TableCell>
                             <TableCell>
-                              <Badge
-                                variant={
-                                  proposal.is_graded
-                                    ? "default"
-                                    : isAssigned
-                                    ? "secondary"
-                                    : "outline"
-                                }
-                              >
-                                {proposal.is_graded
-                                  ? "Graded"
-                                  : isAssigned
-                                  ? "Assigned"
-                                  : "Unassigned"}
+                              <Badge variant={proposal.is_graded ? "positive" : isAssigned ? "secondary" : "secondary"}>
+                                {proposal.is_graded ? "Graded" : isAssigned ? "Assigned" : "Unassigned"}
                               </Badge>
                             </TableCell>
-                            <TableCell className="text-right font-medium">
+                            <TableCell style={{ textAlign: "right", fontWeight: "var(--bw-fw-medium)" as any }}>
                               {proposal.is_graded ? (
-                                <span className="font-bold">{proposal.total_score}<span className="text-muted-foreground font-normal text-xs">/100</span></span>
+                                <span>{proposal.total_score}<span style={{ color: "var(--bw-content-disabled)", fontSize: "var(--bw-fs-xs)", fontWeight: "normal" }}>/100</span></span>
                               ) : (
-                                <span className="text-sm text-muted-foreground">—</span>
+                                <span style={{ color: "var(--bw-content-disabled)" }}>—</span>
                               )}
                             </TableCell>
-                            <TableCell className="text-right">
+                            <TableCell style={{ textAlign: "right", paddingRight: "var(--bw-space-6)" }}>
                               {proposal.is_graded ? (
-                                renderBreakdownDialog(
-                                  proposal,
-                                  <span className="inline-flex items-center gap-1"><BarChart className="h-3.5 w-3.5" />View</span>,
-                                  buttonVariants({ variant: "outline", size: "sm" })
-                                )
+                                renderBreakdownDialog(proposal, <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><BarChart size={14} />View</span>, true)
                               ) : (
-                                <span className="text-sm text-muted-foreground">—</span>
+                                <span style={{ color: "var(--bw-content-disabled)", fontSize: "var(--bw-fs-sm)" }}>—</span>
                               )}
                             </TableCell>
                           </TableRow>
@@ -554,67 +629,69 @@ export function EvaluatorDashboardClient({
                   </TableBody>
                 </Table>
                 </div>
+                {totalAllPages > 1 && (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "var(--bw-space-4)", padding: "var(--bw-space-4)", borderTop: "1px solid var(--bw-border)" }}>
+                    <Button variant="secondary" size="sm" onClick={() => setAllProposalsPage(p => Math.max(1, p - 1))} disabled={allProposalsPage === 1}>Previous</Button>
+                    <span style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-secondary)" }}>Page {allProposalsPage} of {totalAllPages}</span>
+                    <Button variant="secondary" size="sm" onClick={() => setAllProposalsPage(p => Math.min(totalAllPages, p + 1))} disabled={allProposalsPage === totalAllPages}>Next</Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
 
-          {/* RIGHT: Top 15 Teams */}
-          <Card className="h-fit">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Trophy className="h-5 w-5 text-yellow-500" />
-                Top 15 Teams
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {topTeams.length === 0 ? (
-                  <div className="text-sm text-muted-foreground text-center py-4">
-                    No graded proposals yet.
-                  </div>
-                ) : (
-                  topTeams.map((team, index) => {
-                    const evaluatedByList = evaluatorByProposal[team.id] || [];
-                    return (
-                    <div key={team.id} className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                          {index + 1}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium leading-none truncate">
-                            {team.team_name}
-                          </p>
-                          {evaluatedByList.length > 0 && (
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              {evaluatedByList.map((name, i) => (
-                                <span key={i} className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                                  {name}
-                                </span>
-                              ))}
+          {/* RIGHT COLUMN: Top 15 Teams (sticky sidebar) */}
+          <div style={{ position: "sticky", top: 72, alignSelf: "start", maxHeight: "calc(100vh - 100px)", overflowY: "auto" }}>
+            <Card className="bw-card--flat" style={{ display: "flex", flexDirection: "column" }}>
+              <CardHeader>
+                <div style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-2)" }}>
+                  <Trophy size={18} style={{ color: "var(--bw-warning)" }} />
+                  <CardTitle style={{ fontSize: "var(--bw-fs-h4)" }}>Top 15 Teams</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-3)" }}>
+                  {topTeams.length === 0 ? (
+                    <div style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-disabled)", textAlign: "center", padding: "var(--bw-space-6) 0" }}>No graded proposals yet.</div>
+                  ) : (
+                    Array.from({ length: 15 }).map((_, index) => {
+                      const team = topTeams[index];
+                      if (!team) {
+                        return (
+                          <div key={`empty-${index}`} style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-3)", padding: "var(--bw-space-2) var(--bw-space-3)", borderRadius: "var(--bw-radius-md)", border: "1px dashed var(--bw-border)", opacity: 0.4 }}>
+                            <div style={{ width: 24, height: 24, borderRadius: "var(--bw-radius-circle)", background: "var(--bw-chip)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10px", color: "var(--bw-content-disabled)" }}>{index + 1}</div>
+                            <span style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-disabled)" }}>---</span>
+                          </div>
+                        );
+                      }
+                      const evaluatedByList = evaluatorByProposal[team.id] || [];
+                      return (
+                        <div key={team.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--bw-space-2)", padding: "var(--bw-space-2) var(--bw-space-3)", borderRadius: "var(--bw-radius-md)", border: "1px solid var(--bw-border)" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-3)", minWidth: 0, flex: 1 }}>
+                            <div style={{ width: 24, height: 24, borderRadius: "var(--bw-radius-circle)", background: "var(--bw-chip)", color: "var(--bw-content-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: "var(--bw-fw-medium)" as any, flexShrink: 0 }}>{index + 1}</div>
+                            <div style={{ minWidth: 0 }}>
+                              <p style={{ fontSize: "var(--bw-fs-sm)", fontWeight: "var(--bw-fw-medium)" as any, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{team.team_name}</p>
+                              {evaluatedByList.length > 0 && (
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 2 }}>
+                                  {evaluatedByList.map((name, i) => (
+                                    <span key={i} style={{ fontSize: "10px", color: "var(--bw-content-secondary)" }}>{name}{i < evaluatedByList.length - 1 ? "," : ""}</span>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                          )}
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-2)", flexShrink: 0 }}>
+                            <span style={{ fontWeight: "var(--bw-fw-medium)" as any, fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-primary)" }}>{team.total_score}</span>
+                            {renderBreakdownDialog(team, <BarChart size={14} />, false)}
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <div className="font-bold">{team.total_score}</div>
-                        {renderBreakdownDialog(
-                          team,
-                          <BarChart className="h-4 w-4" />,
-                          buttonVariants({
-                            variant: "ghost",
-                            size: "icon",
-                            className: "h-8 w-8 text-muted-foreground",
-                          })
-                        )}
-                      </div>
-                    </div>
-                    );
-                  })
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                      );
+                    })
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     </TooltipProvider>
