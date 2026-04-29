@@ -105,11 +105,16 @@ export function AssignmentsClient({ proposals, evaluators, assignments }: Props)
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === filteredProposals.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(filteredProposals.map((p) => p.id)));
-    }
+    const allFilteredSelected = filteredProposals.length > 0 && filteredProposals.every(p => selectedIds.has(p.id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        filteredProposals.forEach(p => next.delete(p.id));
+      } else {
+        filteredProposals.forEach(p => next.add(p.id));
+      }
+      return next;
+    });
   };
 
   const clearSelection = () => setSelectedIds(new Set());
@@ -125,22 +130,33 @@ export function AssignmentsClient({ proposals, evaluators, assignments }: Props)
     }
     setBulkLoading(true);
     
-    // Upsert avoids duplicate primary key errors
-    const assignmentsToInsert = Array.from(selectedIds).map(id => ({
+    // Use the currently visible filtered proposals that are selected
+    // to avoid accidentally assigning proposals that were selected but then filtered out
+    const activeSelectedIds = Array.from(selectedIds).filter(id => 
+      proposals.some(p => p.id === id)
+    );
+
+    if (activeSelectedIds.length === 0) {
+      toast.error("No valid proposals selected.");
+      setBulkLoading(false);
+      return;
+    }
+    
+    const assignmentsToInsert = activeSelectedIds.map(id => ({
       proposal_id: id,
       evaluator_id: bulkEvaluatorId
     }));
 
     const { error } = await supabase
       .from("proposal_assignments")
-      .upsert(assignmentsToInsert, { onConflict: 'proposal_id,evaluator_id' });
+      .upsert(assignmentsToInsert);
 
     if (error) {
       toast.error(error.message);
     } else {
       const evaluatorName = evaluatorMap.get(bulkEvaluatorId);
       toast.success(
-        `${selectedIds.size} proposal(s) assigned to ${evaluatorName ?? "evaluator"}.`
+        `${activeSelectedIds.length} proposal(s) assigned to ${evaluatorName ?? "evaluator"}.`
       );
       setSelectedIds(new Set());
       setBulkEvaluatorId("");
@@ -250,7 +266,7 @@ export function AssignmentsClient({ proposals, evaluators, assignments }: Props)
                       style={{ cursor: "pointer", width: 16, height: 16 }}
                       checked={
                         filteredProposals.length > 0 &&
-                        selectedIds.size === filteredProposals.length
+                        filteredProposals.every(p => selectedIds.has(p.id))
                       }
                       onChange={toggleSelectAll}
                       aria-label="Select all proposals"
