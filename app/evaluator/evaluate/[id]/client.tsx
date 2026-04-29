@@ -250,14 +250,15 @@ export function EvaluationViewClient({
           <CardContent style={{ display: "flex", flexDirection: "column", gap: 0, padding: 0 }}>
             {(section.criteria ?? []).map((criterion, idx) => (
               <div key={criterion.id} style={{ padding: "var(--bw-space-5) var(--bw-space-6)", borderTop: idx > 0 ? "1px solid var(--bw-border)" : "none", display: "flex", flexDirection: "column", gap: "var(--bw-space-3)" }}>
-                <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "var(--bw-space-3)" }}>
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "var(--bw-space-1)" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-start", gap: "var(--bw-space-3)" }}>
+                  <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "var(--bw-space-1)" }}>
                     <h3 style={{ fontSize: "var(--bw-fs-sm)", fontWeight: "var(--bw-fw-medium)" as any }}>{criterion.name}</h3>
                     <p style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-secondary)", lineHeight: "var(--bw-lh-relaxed)" }}>
                       {criterion.description}
                     </p>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-2)", flexShrink: 0 }}>
+                  {/* Score input — fixed size, 44px min height per DESIGN.md touch targets */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-2)", flexShrink: 0, paddingTop: 2 }}>
                     <Input
                       id={`score-${criterion.id}`}
                       type="number"
@@ -275,10 +276,10 @@ export function EvaluationViewClient({
                           criterion.max_score
                         )
                       }
-                      style={{ width: 64, textAlign: "center", fontWeight: "var(--bw-fw-bold)" as any, height: 32, fontSize: "var(--bw-fs-sm)" }}
+                      style={{ width: 64, textAlign: "center", fontWeight: "var(--bw-fw-bold)" as any, height: 44, fontSize: "16px" /* prevent iOS zoom */ }}
                       disabled={!isEditing}
                     />
-                    <span style={{ fontSize: "var(--bw-fs-xs)", fontWeight: "var(--bw-fw-medium)" as any, color: "var(--bw-content-secondary)" }}>
+                    <span style={{ fontSize: "var(--bw-fs-xs)", fontWeight: "var(--bw-fw-medium)" as any, color: "var(--bw-content-secondary)", whiteSpace: "nowrap" }}>
                       / {criterion.max_score}
                     </span>
                   </div>
@@ -332,7 +333,7 @@ export function EvaluationViewClient({
   const RubricForm = <RubricFormContent />;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-4)", maxWidth: hasMedia ? 1600 : 1024, margin: "0 auto", paddingBottom: 96, position: "relative" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-4)", maxWidth: hasMedia ? 1600 : 1024, margin: "0 auto", paddingBottom: "calc(96px + env(safe-area-inset-bottom))", position: "relative" }}>
       {/* Header */}
       <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "var(--bw-space-4)" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-1)" }}>
@@ -476,7 +477,22 @@ export function EvaluationViewClient({
       )}
 
       {/* Action Buttons (Fixed Bottom Banner) */}
-      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, padding: "16px var(--bw-space-6)", background: "var(--bw-bg-primary)", borderTop: "1px solid var(--bw-border)", zIndex: 50, display: "flex", justifyContent: "flex-end" }}>
+      <div style={{
+        position: "fixed",
+        bottom: 0,
+        left: 0,
+        right: 0,
+        /* Safe area: clears Android gesture nav bar */
+        paddingBottom: "max(16px, calc(12px + env(safe-area-inset-bottom)))",
+        paddingTop: 16,
+        paddingLeft: "var(--bw-space-6)",
+        paddingRight: "var(--bw-space-6)",
+        background: "var(--bw-bg-primary)",
+        borderTop: "1px solid var(--bw-border)",
+        zIndex: 50,
+        display: "flex",
+        justifyContent: "flex-end",
+      }}>
         <div style={{ maxWidth: hasMedia ? 1600 : 1024, margin: "0 auto", width: "100%", display: "flex", justifyContent: "flex-end", gap: "var(--bw-space-3)" }}>
           <Button
             variant="secondary"

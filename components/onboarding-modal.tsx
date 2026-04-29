@@ -217,43 +217,45 @@ export function OnboardingModal({
   // ── render ────────────────────────────────────────────────────────────────
 
   return (
-    <div
-      className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center"
-      style={{ padding: "0", isolation: "isolate" }}
-    >
-      {/* Backdrop */}
+    <>
+      {/* ── Backdrop (separate element so it never wraps the modal) ── */}
       <div
-        className="absolute inset-0 bg-black/90 backdrop-blur-sm"
+        className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-sm"
         onClick={handleClose}
         aria-hidden="true"
       />
 
       {/*
-        ── Modal shell ──
-        Mobile  (<sm): slides up from bottom, full-width sheet, rounded top corners only
-        Tablet  (sm–md): centred card, 90% width, rounded all corners
-        Desktop (md+): centred card, max-w-[860px], two-column layout
+        ── Modal container ──
+        Has its OWN position:fixed so it is never at the mercy of
+        a flex-parent's items-end on Android Chrome.
+
+        Mobile  (<sm): pinned to bottom via bottom-0 inset-x-0, sheet style
+        Tablet  (sm–md): centred with translate trick, max-w-lg, card style
+        Desktop (md+): centred, max-w-[860px], two-column layout
       */}
       <div
         className={[
-          /* positioning & size */
-          "relative z-10 w-full",
-          "sm:max-w-lg md:max-w-[860px]",
-          /* border-radius: bottom-sheet on mobile, card on sm+ */
-          "rounded-t-2xl sm:rounded-2xl",
-          /* flex direction: stacked on mobile, row on md+ */
+          "fixed z-[201] obm-modal",
+          // Mobile: full width, stuck to bottom
+          "inset-x-0 bottom-0 w-full",
+          "rounded-t-2xl",
+          // sm+: centred in viewport
+          "sm:inset-auto sm:bottom-auto",
+          "sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2",
+          "sm:max-w-lg sm:rounded-2xl",
+          // md+: wider two-column
+          "md:max-w-[860px]",
           "flex flex-col md:flex-row md:items-stretch",
-          /* animation */
-          "obm-modal",
         ].join(" ")}
         style={{
           background: "var(--bw-bg-primary)",
           border: "1px solid var(--bw-border)",
           boxShadow: "var(--bw-shadow-200)",
-          /* Mobile: no padding on shell — panels handle their own padding */
-          /* We control overflow so content never leaks */
-          maxHeight: "92dvh",
+          maxHeight: "92svh",
           overflowY: "auto",
+          // Account for Android navigation bar at the bottom
+          paddingBottom: "env(safe-area-inset-bottom)",
         }}
       >
         {/* PREVIEW badge */}
@@ -509,6 +511,6 @@ export function OnboardingModal({
           to   { opacity: 1; transform: scale(1)    translateY(0);   }
         }
       `}} />
-    </div>
+    </>
   );
 }

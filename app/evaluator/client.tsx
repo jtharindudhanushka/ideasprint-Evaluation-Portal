@@ -321,7 +321,7 @@ export function EvaluatorDashboardClient({
     <TooltipProvider>
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-6)" }}>
         <div>
-          <h2 style={{ fontFamily: "var(--bw-font-heading)", fontSize: "var(--bw-fs-h1)", fontWeight: "var(--bw-fw-bold)" as any, lineHeight: "var(--bw-lh-tight)" }}>Evaluator Dashboard</h2>
+          <h2 style={{ fontFamily: "var(--bw-font-heading)", fontSize: "clamp(1.5rem, 5vw, var(--bw-fs-h1))", fontWeight: "var(--bw-fw-bold)" as any, lineHeight: "var(--bw-lh-tight)" }}>Evaluator Dashboard</h2>
           <p style={{ marginTop: "var(--bw-space-2)", fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-secondary)" }}>
             Review and evaluate ideasprint 2026 proposals
           </p>
@@ -563,18 +563,20 @@ export function EvaluatorDashboardClient({
                 </div>
                 {/* Inline filters row */}
                 <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "var(--bw-space-3)", marginTop: "var(--bw-space-3)" }}>
-                  <div style={{ position: "relative", flex: 1, minWidth: 160 }}>
-                    <Search size={16} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--bw-content-disabled)" }} />
-                    <Input type="search" placeholder="Search teams..." value={searchQueryAll} onChange={(e) => setSearchQueryAll(e.target.value)} style={{ paddingLeft: 34 }} pill />
+                  {/* Search — grows to fill available space, min-w-0 prevents overflow */}
+                  <div style={{ position: "relative", flex: "1 1 140px", minWidth: 0 }}>
+                    <Search size={16} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--bw-content-disabled)", pointerEvents: "none" }} />
+                    <Input type="search" placeholder="Search teams..." value={searchQueryAll} onChange={(e) => setSearchQueryAll(e.target.value)} style={{ paddingLeft: 34, minHeight: 44 }} pill />
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-2)", flexShrink: 0 }}>
                     <label htmlFor="graded-toggle" style={{ fontSize: "var(--bw-fs-xs)", fontWeight: "var(--bw-fw-medium)" as any, cursor: "pointer", userSelect: "none", color: "var(--bw-content-secondary)", whiteSpace: "nowrap" }}>Graded only</label>
-                    <button id="graded-toggle" type="button" role="switch" aria-checked={showGradedOnly} onClick={() => setShowGradedOnly(!showGradedOnly)} style={{ width: 32, height: 18, borderRadius: 20, background: showGradedOnly ? "var(--bw-black)" : "var(--bw-chip)", border: "none", position: "relative", cursor: "pointer" }}>
-                      <span style={{ position: "absolute", top: 2, left: showGradedOnly ? 16 : 2, width: 14, height: 14, borderRadius: "50%", background: showGradedOnly ? "var(--bw-white)" : "var(--bw-content-tertiary)", transition: "left 0.2s ease" }} />
+                    <button id="graded-toggle" type="button" role="switch" aria-checked={showGradedOnly} onClick={() => setShowGradedOnly(!showGradedOnly)} style={{ width: 36, height: 20, borderRadius: 20, background: showGradedOnly ? "var(--bw-black)" : "var(--bw-chip)", border: "none", position: "relative", cursor: "pointer", flexShrink: 0 }}>
+                      <span style={{ position: "absolute", top: 3, left: showGradedOnly ? 18 : 3, width: 14, height: 14, borderRadius: "50%", background: showGradedOnly ? "var(--bw-white)" : "var(--bw-content-tertiary)", transition: "left 0.2s ease" }} />
                     </button>
                   </div>
-                  <div style={{ position: "relative", flexShrink: 0 }}>
-                    <select value={filterByEvaluator} onChange={(e) => setFilterByEvaluator(e.target.value)} style={{ appearance: "none", fontSize: "var(--bw-fs-xs)", fontWeight: "var(--bw-fw-medium)" as any, padding: "6px 28px 6px 12px", borderRadius: "var(--bw-radius-pill)", border: "1px solid var(--bw-border)", background: "var(--bw-bg-primary)", color: "var(--bw-content-primary)", cursor: "pointer", outline: "none", width: "100%" }}>
+                  {/* Evaluator filter — shrinks on mobile, full-width on its own row when wrapping */}
+                  <div style={{ position: "relative", flex: "1 1 140px", minWidth: 0 }}>
+                    <select value={filterByEvaluator} onChange={(e) => setFilterByEvaluator(e.target.value)} style={{ appearance: "none", fontSize: "var(--bw-fs-xs)", fontWeight: "var(--bw-fw-medium)" as any, padding: "6px 28px 6px 12px", borderRadius: "var(--bw-radius-pill)", border: "1px solid var(--bw-border)", background: "var(--bw-bg-primary)", color: "var(--bw-content-primary)", cursor: "pointer", outline: "none", width: "100%", minHeight: 44 }}>
                       <option value="all">All Evaluators</option>
                       {uniqueEvaluatorNames.map(e => (<option key={e.id} value={e.id}>{e.name}</option>))}
                     </select>

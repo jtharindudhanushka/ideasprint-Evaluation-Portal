@@ -36,6 +36,8 @@ export default async function EvaluatorLayout({
           flex: 1,
           padding: "var(--bw-space-6) var(--bw-space-4)",
           background: "var(--bw-bg-secondary)",
+          overflowX: "clip",   /* clip (not hidden) preserves sticky children */
+          minWidth: 0,
         }}
         className="sm:px-6 md:px-8"
       >
