@@ -4,7 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ThemeToggle } from "./theme-toggle";
-import { LogOut, ChevronDown, User } from "lucide-react";
+import { LogOut, ChevronDown, User, Mail } from "lucide-react";
 
 interface NavbarProps {
   fullName?: string;
@@ -212,6 +212,30 @@ export function Navbar({ fullName = "", role }: NavbarProps) {
                   </div>
                 )}
               </div>
+
+              {/* Contact Team */}
+              <a
+                href="mailto:jtharindudhanushka@gmail.com"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--bw-space-2)",
+                  width: "100%",
+                  padding: "var(--bw-space-3) var(--bw-space-4)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: "var(--bw-fs-sm)",
+                  color: "var(--bw-content-primary)",
+                  transition: "background var(--bw-duration-fast)",
+                  textAlign: "left",
+                  textDecoration: "none",
+                }}
+                className="bw-button--ghost"
+              >
+                <Mail size={14} />
+                Contact Team
+              </a>
 
               {/* Sign out */}
               <button
