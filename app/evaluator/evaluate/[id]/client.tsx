@@ -113,9 +113,26 @@ export function EvaluationViewClient({
 
   const handleScoreChange = useCallback(
     (criterionId: string, value: string, maxScore: number) => {
-      const numValue = parseInt(value) || 0;
-      const clampedValue = Math.min(Math.max(0, numValue), maxScore);
-      setScores((prev) => ({ ...prev, [criterionId]: clampedValue }));
+      // Empty field → treat as "not yet entered" so the validation
+      // gate catches it rather than silently storing 0.
+      if (value === "") {
+        setScores((prev) => {
+          const next = { ...prev };
+          delete next[criterionId];
+          return next;
+        });
+        return;
+      }
+
+      const numValue = Number(value);
+
+      // Reject non-numeric input (letters, symbols, etc.) without
+      // overwriting the previously stored value.
+      if (isNaN(numValue)) return;
+
+      // Floor to integer (handles "7." mid-entry gracefully) then clamp.
+      const clamped = Math.min(Math.max(0, Math.floor(numValue)), maxScore);
+      setScores((prev) => ({ ...prev, [criterionId]: clamped }));
     },
     []
   );
@@ -200,7 +217,10 @@ export function EvaluationViewClient({
   const hasVideo = !!proposal.video_url;
   const hasMedia = hasPdf || hasVideo;
 
-  const RubricForm = (
+  // ── Extracted as a stable inner component so each layout copy (desktop /
+  // mobile) owns its own DOM tree with unique ids, and React can reconcile
+  // them independently without key or id collisions.
+  const RubricFormContent = useCallback(() => (
     <div onClickCapture={handleLockedInteraction} style={{ position: "relative", display: "flex", flexDirection: "column", gap: "var(--bw-space-4)" }}>
       {/* Sticky total marks bar — offset accounts for navbar height (~64px) */}
       <div style={{ position: "sticky", top: 72, zIndex: 20, background: "var(--bw-bg-primary)", padding: "10px 20px", borderRadius: "var(--bw-radius-md)", border: "1px solid var(--bw-border)", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "var(--bw-shadow-100)" }}>
@@ -306,7 +326,10 @@ export function EvaluationViewClient({
         </CardContent>
       </Card>
     </div>
-  );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [scores, notes, globalNotes, isEditing, sections, handleScoreChange, handleNotesChange, handleLockedInteraction, maxPossibleScore, totalScore]);
+
+  const RubricForm = <RubricFormContent />;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-4)", maxWidth: hasMedia ? 1600 : 1024, margin: "0 auto", paddingBottom: 96, position: "relative" }}>

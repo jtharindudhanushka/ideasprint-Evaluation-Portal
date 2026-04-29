@@ -8,6 +8,7 @@ export interface Profile {
   id: string;
   full_name: string;
   role: UserRole;
+  has_seen_onboarding: boolean;
   created_at: string;
 }
 

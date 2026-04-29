@@ -42,9 +42,22 @@ function Dialog({
 function DialogTrigger({
   children,
   className = "",
+  asChild,
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { asChild?: boolean }) {
   const { setOpen } = React.useContext(DialogContext);
+  
+  if (asChild && React.isValidElement(children)) {
+    const child = children as any;
+    return React.cloneElement(children as React.ReactElement<any>, {
+      onClick: (e: any) => {
+        setOpen(true);
+        if (child.props.onClick) child.props.onClick(e);
+      },
+      ...props
+    });
+  }
+
   return (
     <button
       type="button"

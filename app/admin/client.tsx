@@ -135,8 +135,24 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
 
     return (
       <Dialog>
-        <DialogTrigger style={isIcon ? { background: "none", border: "none", cursor: "pointer", color: "var(--bw-content-tertiary)", padding: 4, borderRadius: "var(--bw-radius-circle)", display: "flex" } : undefined}>
-          {trigger}
+        <DialogTrigger asChild>
+          {isIcon ? (
+            <button
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--bw-content-tertiary)",
+                padding: 4,
+                borderRadius: "var(--bw-radius-circle)",
+                display: "flex",
+              }}
+            >
+              {trigger}
+            </button>
+          ) : (
+            trigger
+          )}
         </DialogTrigger>
         <DialogContent className="max-w-2xl">
           <DialogHeader>

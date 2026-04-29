@@ -37,7 +37,7 @@ export default async function EvaluatorDashboardPage() {
       `),
     supabase
       .from("profiles")
-      .select("id, full_name"),
+      .select("id, full_name, has_seen_onboarding"),
     supabase
       .from("proposal_assignments")
       .select("*"),
@@ -128,6 +128,7 @@ export default async function EvaluatorDashboardPage() {
       assignments={assignments ?? []}
       serverNow={new Date().toISOString()}
       daysLeft={daysLeft}
+      hasSeenOnboarding={profiles?.find(p => p.id === user!.id)?.has_seen_onboarding ?? true}
     />
   );
 }

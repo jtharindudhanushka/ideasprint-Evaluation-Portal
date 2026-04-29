@@ -46,6 +46,7 @@ import {
   ClipboardList,
   ChevronDown,
 } from "lucide-react";
+import { OnboardingModal } from "@/components/onboarding-modal";
 import type { Proposal, Profile, ProposalAssignment } from "@/lib/types/database";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -61,6 +62,7 @@ interface Props {
   assignments: ProposalAssignment[];
   serverNow?: string;
   daysLeft?: string;
+  hasSeenOnboarding?: boolean;
 }
 
 export function EvaluatorDashboardClient({
@@ -73,6 +75,7 @@ export function EvaluatorDashboardClient({
   scoresByProposal = {},
   assignments = [],
   daysLeft = "14",
+  hasSeenOnboarding = true,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -80,6 +83,7 @@ export function EvaluatorDashboardClient({
   const [searchQueryAll, setSearchQueryAll] = useState("");
   const [showOnlyPending, setShowOnlyPending] = useState(false);
   const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(!hasSeenOnboarding);
 
   // All Proposals Pagination & Filter state
   const [allProposalsPage, setAllProposalsPage] = useState(1);
@@ -212,10 +216,26 @@ export function EvaluatorDashboardClient({
 
     return (
       <Dialog>
-        <DialogTrigger
-          style={isButton ? undefined : { background: "none", border: "none", cursor: "pointer", color: "var(--bw-content-tertiary)", padding: 4, borderRadius: "var(--bw-radius-circle)", display: "flex" }}
-        >
-          {isButton ? <Button variant="secondary" size="sm">{triggerContent}</Button> : triggerContent}
+        <DialogTrigger asChild>
+          {isButton ? (
+            <Button variant="secondary" size="sm">
+              {triggerContent}
+            </Button>
+          ) : (
+            <button
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--bw-content-tertiary)",
+                padding: 4,
+                borderRadius: "var(--bw-radius-circle)",
+                display: "flex",
+              }}
+            >
+              {triggerContent}
+            </button>
+          )}
         </DialogTrigger>
         <DialogContent>
           <DialogHeader>
@@ -705,6 +725,11 @@ export function EvaluatorDashboardClient({
             </Card>
           </div>
         </div>
+        <OnboardingModal 
+          isOpen={isOnboardingOpen} 
+          onClose={() => setIsOnboardingOpen(false)} 
+          currentUserId={currentUserId}
+        />
       </div>
     </TooltipProvider>
   );
