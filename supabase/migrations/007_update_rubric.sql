@@ -1,12 +1,10 @@
 -- ============================================================
 -- ideasprint 2026 Evaluation Dashboard
--- Migration 003: Seed Rubric Data
--- Run this AFTER 001 & 002 in the Supabase SQL Editor.
+-- Migration 007: Update Rubric to New Grading Scheme
+-- Run this in the Supabase SQL Editor to update the existing rubric data.
 -- ============================================================
 
--- ============================================================
 -- SECTION 1: Proposal (70 marks)
--- ============================================================
 INSERT INTO public.rubric_sections (id, name, total_marks, order_index)
 VALUES ('a1000000-0000-0000-0000-000000000001', 'Proposal', 70, 1)
 ON CONFLICT (id) DO UPDATE SET total_marks = EXCLUDED.total_marks, name = EXCLUDED.name, order_index = EXCLUDED.order_index;
@@ -107,9 +105,7 @@ VALUES (
   8
 ) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, max_score = EXCLUDED.max_score, grading_bands = EXCLUDED.grading_bands, order_index = EXCLUDED.order_index;
 
--- ============================================================
 -- SECTION 2: Pitch Video (30 marks)
--- ============================================================
 INSERT INTO public.rubric_sections (id, name, total_marks, order_index)
 VALUES ('a1000000-0000-0000-0000-000000000002', 'Pitch Video', 30, 2)
 ON CONFLICT (id) DO UPDATE SET total_marks = EXCLUDED.total_marks, name = EXCLUDED.name, order_index = EXCLUDED.order_index;

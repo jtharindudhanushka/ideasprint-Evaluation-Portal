@@ -222,32 +222,36 @@ export function EvaluatorDashboardClient({
           <DialogTitle style={{ fontSize: "var(--bw-fs-h4)" }}>{proposal.team_name}</DialogTitle>
           </DialogHeader>
           <div style={{ padding: "0 var(--bw-space-6) var(--bw-space-6)", display: "flex", flexDirection: "column", gap: "var(--bw-space-4)" }}>
-            {/* Average total score */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bw-chip)", padding: "var(--bw-space-3) var(--bw-space-4)", borderRadius: "var(--bw-radius-md)" }}>
-              <span style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-secondary)" }}>Average Score</span>
-              <span style={{ fontSize: "var(--bw-fs-h3)", fontWeight: "var(--bw-fw-bold)" as any }}>{proposal.total_score}/100</span>
-            </div>
-
-            {/* Per-evaluator totals (no rubric detail for others) */}
-            {(isGradedByMe || otherEvalScores.length > 0) && (
+            {/* Evaluators Status */}
+            {(assigneesByProposal[proposal.id] || []).length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)" }}>
-                <div style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-tertiary)", fontWeight: "var(--bw-fw-medium)" as any }}>Evaluator Scores</div>
-                {/* My score row */}
-                {isGradedByMe && myScore && (
+                <div style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-tertiary)", fontWeight: "var(--bw-fw-medium)" as any }}>Evaluators Status</div>
+                {/* My status row */}
+                {(assigneesByProposal[proposal.id] || []).includes(currentUserId) && (
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "var(--bw-space-2) var(--bw-space-3)", borderRadius: "var(--bw-radius-sm)", background: "var(--bw-hover-light)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-2)" }}>
-                      <Badge variant="secondary" style={{ fontSize: 10 }}>You</Badge>
+                      <span style={{ fontSize: "var(--bw-fs-sm)", fontWeight: "var(--bw-fw-medium)" as any }}>You</span>
                     </div>
-                    <span style={{ fontWeight: "var(--bw-fw-bold)" as any, fontSize: "var(--bw-fs-sm)" }}>{myScore.total}/100</span>
+                    {isGradedByMe && myScore ? (
+                      <Badge variant="positive">Graded ({myScore.total}/100)</Badge>
+                    ) : (
+                      <Badge variant="secondary">Pending</Badge>
+                    )}
                   </div>
                 )}
-                {/* Other evaluators — only name + total */}
-                {otherEvalScores.map(([evalId, { name, total }]) => (
-                  <div key={evalId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "var(--bw-space-2) var(--bw-space-3)", borderRadius: "var(--bw-radius-sm)", border: "1px solid var(--bw-border)" }}>
-                    <span style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-secondary)" }}>{name}</span>
-                    <span style={{ fontWeight: "var(--bw-fw-medium)" as any, fontSize: "var(--bw-fs-sm)" }}>{total}/100</span>
-                  </div>
-                ))}
+                {/* Other evaluators — status only */}
+                {(assigneesByProposal[proposal.id] || []).filter(id => id !== currentUserId).map((evalId) => {
+                  const name = evaluatorMap.get(evalId) || "Unknown";
+                  const hasGraded = !!scoresByProposal[proposal.id]?.[evalId];
+                  return (
+                    <div key={evalId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "var(--bw-space-2) var(--bw-space-3)", borderRadius: "var(--bw-radius-sm)", border: "1px solid var(--bw-border)" }}>
+                      <span style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-secondary)" }}>{name}</span>
+                      <Badge variant={hasGraded ? "positive" : "secondary"}>
+                        {hasGraded ? "Graded" : "Pending"}
+                      </Badge>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -564,9 +568,8 @@ export function EvaluatorDashboardClient({
                   <TableHeader>
                     <TableRow>
                       <TableHead style={{ paddingLeft: "var(--bw-space-6)" }}>Team &amp; Product</TableHead>
-                      <TableHead>Assigned To</TableHead>
+                      <TableHead>Evaluators</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead style={{ textAlign: "right" }}>Marks</TableHead>
                       <TableHead style={{ textAlign: "right", paddingRight: "var(--bw-space-6)" }}>Details</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -592,35 +595,41 @@ export function EvaluatorDashboardClient({
                             </TableCell>
                             <TableCell>
                               {isAssigned ? (
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                                  {assigneeNames.map((name, i) => (
-                                    <span key={i} style={{ fontSize: "var(--bw-fs-sm)", color: isMyProposal && assigneeIds[i] === currentUserId ? "var(--bw-content-primary)" : "var(--bw-content-secondary)", fontWeight: isMyProposal && assigneeIds[i] === currentUserId ? "var(--bw-fw-bold)" as any : "var(--bw-fw-normal)" as any }}>
-                                      {isMyProposal && assigneeIds[i] === currentUserId ? "You" : name}{i < assigneeNames.length - 1 ? "," : ""}
-                                    </span>
-                                  ))}
+                                <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)" }}>
+                                  {assigneeIds.map((evalId) => {
+                                    const isMe = evalId === currentUserId;
+                                    const name = isMe ? "You" : (evaluatorMap.get(evalId) || "Unknown");
+                                    return (
+                                      <div key={evalId} style={{ display: "flex", alignItems: "center", height: 24 }}>
+                                        <span style={{ fontSize: "var(--bw-fs-xs)", color: isMe ? "var(--bw-content-primary)" : "var(--bw-content-secondary)", fontWeight: isMe ? "var(--bw-fw-bold)" as any : "var(--bw-fw-normal)" as any }}>
+                                          {name}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               ) : (
                                 <span style={{ fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-disabled)", fontStyle: "italic" }}>Unassigned</span>
                               )}
                             </TableCell>
                             <TableCell>
-                              <Badge variant={proposal.is_graded ? "positive" : isAssigned ? "secondary" : "secondary"}>
-                                {proposal.is_graded ? "Graded" : isAssigned ? "Assigned" : "Unassigned"}
-                              </Badge>
-                            </TableCell>
-                            <TableCell style={{ textAlign: "right", fontWeight: "var(--bw-fw-medium)" as any }}>
-                              {proposal.is_graded ? (
-                                <span>{proposal.total_score}<span style={{ color: "var(--bw-content-disabled)", fontSize: "var(--bw-fs-xs)", fontWeight: "normal" }}>/100</span></span>
-                              ) : (
-                                <span style={{ color: "var(--bw-content-disabled)" }}>—</span>
-                              )}
+                              {isAssigned ? (
+                                <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)" }}>
+                                  {assigneeIds.map((evalId) => {
+                                    const hasGraded = !!scoresByProposal[proposal.id]?.[evalId];
+                                    return (
+                                      <div key={evalId} style={{ display: "flex", alignItems: "center", height: 24 }}>
+                                        <Badge variant={hasGraded ? "positive" : "secondary"}>
+                                          {hasGraded ? "Graded" : "Pending"}
+                                        </Badge>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : null}
                             </TableCell>
                             <TableCell style={{ textAlign: "right", paddingRight: "var(--bw-space-6)" }}>
-                              {proposal.is_graded ? (
-                                renderBreakdownDialog(proposal, <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><BarChart size={14} />View</span>, true)
-                              ) : (
-                                <span style={{ color: "var(--bw-content-disabled)", fontSize: "var(--bw-fs-sm)" }}>—</span>
-                              )}
+                              {renderBreakdownDialog(proposal, <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><BarChart size={14} />View</span>, true)}
                             </TableCell>
                           </TableRow>
                         );
@@ -648,6 +657,9 @@ export function EvaluatorDashboardClient({
                   <Trophy size={18} style={{ color: "var(--bw-warning)" }} />
                   <CardTitle style={{ fontSize: "var(--bw-fs-h4)" }}>Top 15 Teams</CardTitle>
                 </div>
+                <p style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-tertiary)", marginTop: "var(--bw-space-1)" }}>
+                  Based on average marks. Not your individual marks.
+                </p>
               </CardHeader>
               <CardContent>
                 <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-3)" }}>

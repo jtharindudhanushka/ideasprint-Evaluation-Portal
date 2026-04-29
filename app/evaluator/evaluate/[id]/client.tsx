@@ -56,9 +56,9 @@ interface Props {
 const getBandColor = (text: string) => {
   const lower = text.toLowerCase();
   if (lower.includes("excellent") || lower.includes("outstanding") || lower.includes("high")) return "positive";
-  if (lower.includes("good") || lower.includes("proficient") || lower.includes("above average")) return "secondary"; // Maybe use primary instead of blue
-  if (lower.includes("average") || lower.includes("fair") || lower.includes("adequate")) return "secondary"; // Warning color doesn't really exist in tokens, secondary is okay
-  if (lower.includes("poor") || lower.includes("weak") || lower.includes("below")) return "negative";
+  if (lower.includes("good") || lower.includes("proficient") || lower.includes("above average")) return "accent";
+  if (lower.includes("average") || lower.includes("fair") || lower.includes("adequate") || lower.includes("developing")) return "warning";
+  if (lower.includes("poor") || lower.includes("weak") || lower.includes("below") || lower.includes("fail")) return "negative";
   return "secondary";
 };
 
@@ -269,7 +269,7 @@ export function EvaluationViewClient({
                     <Badge
                       key={idx}
                       variant={getBandColor(band) as any}
-                      style={{ fontSize: "10px", padding: "2px 8px", fontWeight: "var(--bw-fw-normal)" as any }}
+                      style={{ fontWeight: "var(--bw-fw-normal)" as any }}
                     >
                       {band}
                     </Badge>
