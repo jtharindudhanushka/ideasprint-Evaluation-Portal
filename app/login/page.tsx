@@ -42,16 +42,16 @@ export default function LoginPage() {
   return (
     <div
       style={{
-        minHeight: "100vh",
+        minHeight: "100dvh",
         display: "flex",
         background: "var(--bw-bg-primary)",
       }}
     >
-      {/* Left panel — image + brand (desktop only) */}
+      {/* ── Left panel — hero image + brand (desktop lg+ only) ── */}
       <div
         className="hidden lg:flex"
         style={{
-          flex: "1 1 50%",
+          flex: "0 0 50%",
           background: "var(--bw-bg-inverse)",
           position: "relative",
           overflow: "hidden",
@@ -68,6 +68,15 @@ export default function LoginPage() {
             backgroundImage: "url(/loginimage.jpg)",
             backgroundSize: "cover",
             backgroundPosition: "center",
+          }}
+        />
+        {/* Gradient overlay for readability */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.15) 60%, transparent 100%)",
           }}
         />
 
@@ -108,7 +117,7 @@ export default function LoginPage() {
           <p
             style={{
               fontSize: "var(--bw-fs-lg)",
-              color: "rgba(255, 255, 255, 0.7)",
+              color: "rgba(255, 255, 255, 0.75)",
               lineHeight: "var(--bw-lh-body)",
               maxWidth: 400,
             }}
@@ -120,24 +129,35 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Right panel — login form */}
+      {/* ── Right panel — login form ── */}
+      {/*
+        Mobile  (<lg): takes full width, vertically centred, safe horizontal padding
+        Tablet (sm–md): same layout, just slightly more padding
+        Desktop (lg+): takes the remaining 50%
+      */}
       <div
         style={{
-          flex: "1 1 50%",
+          flex: "1 1 auto",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          padding: "var(--bw-space-8)",
-          minHeight: "100vh",
+          /* Safe padding: enough breathing room but never clips on small screens */
+          padding: "clamp(24px, 6vw, 64px) clamp(20px, 5vw, 48px)",
+          minHeight: "100dvh",
         }}
       >
+        {/* Inner form container — full-width on mobile, capped on larger screens */}
         <div style={{ width: "100%", maxWidth: 400 }}>
-          {/* Mobile brand (shown only < lg) */}
-          <div className="lg:hidden" style={{ marginBottom: "var(--bw-space-10)", textAlign: "center" }}>
+
+          {/* ── Mobile / tablet brand badge (hidden on desktop) ── */}
+          <div
+            className="lg:hidden"
+            style={{ marginBottom: "var(--bw-space-10)", textAlign: "center" }}
+          >
             <div
               style={{
-                width: 40,
-                height: 40,
+                width: 44,
+                height: 44,
                 background: "var(--bw-bg-inverse)",
                 borderRadius: "var(--bw-radius-md)",
                 display: "inline-flex",
@@ -155,16 +175,26 @@ export default function LoginPage() {
             <h1
               style={{
                 fontFamily: "var(--bw-font-heading)",
-                fontSize: "var(--bw-fs-h2)",
+                fontSize: "clamp(1.5rem, 5vw, 2rem)",
                 fontWeight: "var(--bw-fw-bold)" as any,
                 color: "var(--bw-content-primary)",
+                lineHeight: "var(--bw-lh-tight)",
               }}
             >
               ideasprint 2026
             </h1>
+            <p
+              style={{
+                marginTop: "var(--bw-space-2)",
+                fontSize: "var(--bw-fs-sm)",
+                color: "var(--bw-content-secondary)",
+              }}
+            >
+              Evaluation portal for the lecture panel.
+            </p>
           </div>
 
-          {/* Form heading */}
+          {/* ── Form heading ── */}
           <h2
             style={{
               fontFamily: "var(--bw-font-heading)",
@@ -187,7 +217,11 @@ export default function LoginPage() {
             Enter your credentials to access the evaluation dashboard.
           </p>
 
-          <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-5)" }}>
+          {/* ── Form ── */}
+          <form
+            onSubmit={handleLogin}
+            style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-5)" }}
+          >
             {/* Email */}
             <div>
               <label
@@ -207,11 +241,12 @@ export default function LoginPage() {
                 id="login-email"
                 type="email"
                 autoComplete="email"
+                inputMode="email"
                 placeholder="you@university.edu"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="bw-input"
-                style={{ height: 48 }}
+                style={{ height: 48, fontSize: "16px" /* prevents iOS zoom */ }}
                 required
               />
             </div>
@@ -238,7 +273,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="bw-input"
-                style={{ height: 48 }}
+                style={{ height: 48, fontSize: "16px" /* prevents iOS zoom */ }}
                 required
               />
             </div>
@@ -250,7 +285,7 @@ export default function LoginPage() {
               className="bw-button bw-button--primary"
               style={{
                 width: "100%",
-                height: 48,
+                height: 52,
                 borderRadius: "var(--bw-radius-pill)",
                 fontFamily: "var(--bw-font-body)",
                 fontSize: "var(--bw-fs-base)",
