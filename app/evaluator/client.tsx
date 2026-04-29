@@ -330,11 +330,11 @@ export function EvaluatorDashboardClient({
         {/* Main Grid: Left (Cards + Assignments + All Proposals) | Right (Top 15) */}
         <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
           {/* LEFT COLUMN: cards + stacked tables */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-6)" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-6)", minWidth: 0 }}>
             {/* Quick Stats — Modern Icon Cards */}
-            <div className="flex sm:grid gap-4 sm:gap-6 sm:grid-cols-3 overflow-x-auto pb-4 sm:pb-0 snap-x snap-mandatory" style={{ margin: "0 calc(var(--bw-space-4) * -1)", padding: "0 var(--bw-space-4)", scrollPadding: "var(--bw-space-4)" }}>
+            <div className="grid gap-6 grid-cols-1 sm:grid-cols-3">
           {/* My Assignments */}
-          <Card variant="flat" className="snap-start shrink-0 w-[85vw] sm:w-auto" style={{ overflow: "hidden", position: "relative" }}>
+          <Card variant="flat" style={{ overflow: "hidden", position: "relative" }}>
             <CardContent style={{ padding: "var(--bw-space-5)" }}>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
                 <div>
@@ -350,7 +350,7 @@ export function EvaluatorDashboardClient({
           </Card>
 
           {/* Remaining */}
-          <Card variant="flat" className="snap-start shrink-0 w-[85vw] sm:w-auto" style={{ overflow: "hidden", position: "relative" }}>
+          <Card variant="flat" style={{ overflow: "hidden", position: "relative" }}>
             <CardContent style={{ padding: "var(--bw-space-5)" }}>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
                 <div>
@@ -372,7 +372,7 @@ export function EvaluatorDashboardClient({
             const days = parseInt(daysLeft) || 0;
             const isUrgent = days <= 3;
             return (
-              <Card variant="flat" className="snap-start shrink-0 w-[85vw] sm:w-auto" style={{ overflow: "hidden", position: "relative" }}>
+              <Card variant="flat" style={{ overflow: "hidden", position: "relative" }}>
                 <CardContent style={{ padding: "var(--bw-space-5)" }}>
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
                     <div>
@@ -672,7 +672,7 @@ export function EvaluatorDashboardClient({
           </div>
 
           {/* RIGHT COLUMN: Top 15 Teams (sticky sidebar) */}
-          <div style={{ position: "sticky", top: 72, alignSelf: "start", maxHeight: "calc(100vh - 100px)", overflowY: "auto" }}>
+          <div style={{ position: "sticky", top: 72, alignSelf: "start", maxHeight: "calc(100vh - 100px)", overflowY: "auto", minWidth: 0 }}>
             <Card className="bw-card--flat" style={{ display: "flex", flexDirection: "column" }}>
               <CardHeader>
                 <div style={{ display: "flex", alignItems: "center", gap: "var(--bw-space-2)" }}>
