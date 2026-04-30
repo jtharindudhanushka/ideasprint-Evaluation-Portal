@@ -35,13 +35,13 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  // Allow auth callback to pass through
-  if (pathname.startsWith("/api/auth")) {
+  // Allow auth callback and reset password page to pass through
+  if (pathname.startsWith("/api/auth") || pathname === "/reset-password") {
     return supabaseResponse;
   }
 
   // Not logged in → redirect to login (except if already on login page)
-  if (!user && pathname !== "/login") {
+  if (!user && pathname !== "/login" && pathname !== "/reset-password") {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
