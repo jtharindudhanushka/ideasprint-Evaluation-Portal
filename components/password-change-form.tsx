@@ -2,7 +2,7 @@
 import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import { Loader2, Check, ArrowRight } from "lucide-react";
+import { Loader2, Check, ArrowRight, Eye, EyeOff } from "lucide-react";
 
 interface PasswordChangeFormProps {
   onSuccess?: () => void;
@@ -19,6 +19,8 @@ export function PasswordChangeForm({
   const [confirmPassword, setConfirmPassword] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [complete, setComplete] = React.useState(false);
+  const [showNewPassword, setShowNewPassword] = React.useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
   const supabase = createClient();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -135,20 +137,45 @@ export function PasswordChangeForm({
             >
               New Password
             </label>
-            <input
-              id="new-password"
-              type="password"
-              placeholder="••••••••"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className="bw-input"
-              style={{
-                height: 48,
-                fontSize: "16px",
-                borderRadius: "var(--bw-radius-md)",
-              }}
-              required
-            />
+            <div style={{ position: "relative" }}>
+              <input
+                id="new-password"
+                type={showNewPassword ? "text" : "password"}
+                placeholder="••••••••"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="bw-input"
+                style={{
+                  height: 48,
+                  fontSize: "16px",
+                  borderRadius: "var(--bw-radius-md)",
+                  paddingRight: 48,
+                }}
+                required
+              />
+              <button
+                type="button"
+                aria-label={showNewPassword ? "Hide password" : "Show password"}
+                onClick={() => setShowNewPassword((v) => !v)}
+                tabIndex={-1}
+                style={{
+                  position: "absolute",
+                  right: 12,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 4,
+                  color: "var(--bw-content-secondary)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
 
           {/* Confirm Password */}
@@ -165,20 +192,45 @@ export function PasswordChangeForm({
             >
               Confirm Password
             </label>
-            <input
-              id="confirm-password"
-              type="password"
-              placeholder="••••••••"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="bw-input"
-              style={{
-                height: 48,
-                fontSize: "16px",
-                borderRadius: "var(--bw-radius-md)",
-              }}
-              required
-            />
+            <div style={{ position: "relative" }}>
+              <input
+                id="confirm-password"
+                type={showConfirmPassword ? "text" : "password"}
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="bw-input"
+                style={{
+                  height: 48,
+                  fontSize: "16px",
+                  borderRadius: "var(--bw-radius-md)",
+                  paddingRight: 48,
+                }}
+                required
+              />
+              <button
+                type="button"
+                aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                onClick={() => setShowConfirmPassword((v) => !v)}
+                tabIndex={-1}
+                style={{
+                  position: "absolute",
+                  right: 12,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 4,
+                  color: "var(--bw-content-secondary)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
         </div>
 

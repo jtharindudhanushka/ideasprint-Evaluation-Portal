@@ -4,12 +4,13 @@ import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, ArrowRight } from "lucide-react";
+import { Loader2, ArrowRight, Eye, EyeOff } from "lucide-react";
 
 export default function LoginPage() {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [loading, setLoading] = React.useState(false);
+  const [showPassword, setShowPassword] = React.useState(false);
   const router = useRouter();
   const supabase = createClient();
   const emailRef = React.useRef<HTMLInputElement>(null);
@@ -265,17 +266,41 @@ export default function LoginPage() {
               >
                 Password
               </label>
-              <input
-                id="login-password"
-                type="password"
-                autoComplete="current-password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="bw-input"
-                style={{ height: 48, fontSize: "16px" /* prevents iOS zoom */ }}
-                required
-              />
+              <div style={{ position: "relative" }}>
+                <input
+                  id="login-password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="bw-input"
+                  style={{ height: 48, fontSize: "16px", paddingRight: 48 /* room for eye icon */ }}
+                  required
+                />
+                <button
+                  type="button"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  onClick={() => setShowPassword((v) => !v)}
+                  tabIndex={-1}
+                  style={{
+                    position: "absolute",
+                    right: 12,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 4,
+                    color: "var(--bw-content-secondary)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
 
             {/* Submit */}
@@ -326,7 +351,21 @@ export default function LoginPage() {
           >
             Credentials are provided by the event organizer.
             <br />
-            Contact your administrator if you need access.
+            Need help?{" "}
+            <a
+              href="https://wa.me/94762195995"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                color: "var(--bw-content-secondary)",
+                textDecoration: "underline",
+                textDecorationStyle: "dotted",
+                cursor: "pointer",
+              }}
+            >
+              Contact the team on WhatsApp
+            </a>
+            .
           </p>
         </div>
       </div>
