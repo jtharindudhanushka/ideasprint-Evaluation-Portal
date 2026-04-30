@@ -15,58 +15,55 @@ export default function ResetPasswordPage() {
 
   React.useEffect(() => {
     const init = async () => {
-      // PKCE flow: Supabase sends ?code=xxx in the URL query params
+      // ── Path 1: PKCE flow — Supabase sends ?code=xxx ──
       const params = new URLSearchParams(window.location.search);
       const code = params.get("code");
 
       if (code) {
-        // Exchange the code for a session server-side
         const { error } = await supabase.auth.exchangeCodeForSession(code);
         if (!error) {
           setHasSession(true);
           setInitializing(false);
           return;
-        } else {
-          console.error("Code exchange failed:", error.message);
+        }
+        console.error("PKCE exchange failed:", error.message);
+      }
+
+      // ── Path 2: Implicit/OTP flow — Supabase appends #access_token=xxx ──
+      // Parse the hash fragment directly instead of relying on SDK auto-detection timing.
+      const hash = window.location.hash;
+      if (hash) {
+        const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
+        const accessToken = hashParams.get("access_token");
+        const refreshToken = hashParams.get("refresh_token");
+        const type = hashParams.get("type");
+
+        if (accessToken && refreshToken && type === "recovery") {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (!error) {
+            setHasSession(true);
+            setInitializing(false);
+            return;
+          }
+          console.error("setSession failed:", error.message);
         }
       }
 
-      // Implicit / fragment flow: Supabase puts #access_token=xxx in the URL hash.
-      // onAuthStateChange fires PASSWORD_RECOVERY when the SDK picks up the hash.
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        if (event === "PASSWORD_RECOVERY" && session) {
-          setHasSession(true);
-          setInitializing(false);
-        }
-      });
-
-      // Also check if a session already exists (e.g. hash was processed synchronously)
+      // ── Path 3: Session already exists (e.g. SDK already processed URL) ──
       const { data } = await supabase.auth.getSession();
       if (data.session) {
         setHasSession(true);
         setInitializing(false);
-        subscription.unsubscribe();
         return;
       }
 
-      // Give the SDK up to 3s to parse the hash fragment before giving up
-      let attempts = 0;
-      const poll = setInterval(async () => {
-        attempts++;
-        const { data: polled } = await supabase.auth.getSession();
-        if (polled.session) {
-          setHasSession(true);
-          setInitializing(false);
-          clearInterval(poll);
-          subscription.unsubscribe();
-        } else if (attempts >= 3) {
-          clearInterval(poll);
-          subscription.unsubscribe();
-          setHasSession(false);
-          setInitializing(false);
-          toast.error("This password reset link is invalid or has expired.");
-        }
-      }, 1000);
+      // ── Nothing worked ──
+      setHasSession(false);
+      setInitializing(false);
+      toast.error("This password reset link is invalid or has expired.");
     };
 
     init();
