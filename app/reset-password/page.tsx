@@ -14,32 +14,45 @@ export default function ResetPasswordPage() {
   const supabase = createClient();
 
   React.useEffect(() => {
-    const checkSession = async () => {
-      // Supabase client automatically picks up the hash/access_token from the URL
-      // and establishes the session on mount if it's a valid recovery link.
-      const { data, error } = await supabase.auth.getSession();
-      
-      if (error || !data.session) {
-        setHasSession(false);
-        // If no session, wait a bit then redirect to login if still no session
-        // (Sometimes it takes a tick for the client to parse the URL fragment)
-        setTimeout(async () => {
-          const { data: retryData } = await supabase.auth.getSession();
-          if (!retryData.session) {
-            toast.error("Invalid or expired password reset link.");
-            router.push("/login");
-          } else {
-            setHasSession(true);
-            setInitializing(false);
-          }
-        }, 1000);
-      } else {
+    // Listen for auth state changes, specifically PASSWORD_RECOVERY
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("Auth event:", event);
+      if (event === "PASSWORD_RECOVERY" || session) {
         setHasSession(true);
         setInitializing(false);
+      }
+    });
+
+    const checkSession = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      
+      if (data.session) {
+        setHasSession(true);
+        setInitializing(false);
+      } else {
+        // Fallback: wait up to 3 seconds for the client to parse the URL fragment
+        let retries = 0;
+        const interval = setInterval(async () => {
+          retries++;
+          const { data: retryData } = await supabase.auth.getSession();
+          if (retryData.session) {
+            setHasSession(true);
+            setInitializing(false);
+            clearInterval(interval);
+          } else if (retries >= 3) {
+            setHasSession(false);
+            setInitializing(false);
+            clearInterval(interval);
+            toast.error("Invalid or expired password reset link.");
+            // Do not redirect immediately to allow user to see error
+          }
+        }, 1000);
+        return () => clearInterval(interval);
       }
     };
 
     checkSession();
+    return () => subscription.unsubscribe();
   }, [supabase, router]);
 
   const handleSuccess = () => {
