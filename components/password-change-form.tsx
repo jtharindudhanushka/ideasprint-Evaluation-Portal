@@ -62,41 +62,57 @@ export function PasswordChangeForm({
 
   if (complete) {
     return (
-      <div className="flex flex-col items-center justify-center py-8 text-center space-y-4">
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+          padding: "var(--bw-space-8) 0",
+          gap: "var(--bw-space-4)",
+        }}
+      >
         <div
           style={{
-            width: 64,
-            height: 64,
+            width: 56,
+            height: 56,
             borderRadius: "var(--bw-radius-circle)",
             background: "var(--bw-bg-inverse)",
             color: "var(--bw-content-inverse)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            marginBottom: "var(--bw-space-2)",
+            flexShrink: 0,
           }}
         >
-          <Check size={32} strokeWidth={3} />
+          <Check size={28} strokeWidth={2.5} />
         </div>
-        <h3
-          style={{
-            fontFamily: "var(--bw-font-heading)",
-            fontSize: "var(--bw-fs-h4)",
-            fontWeight: "var(--bw-fw-bold)" as any,
-            color: "var(--bw-content-primary)",
-          }}
-        >
-          Security updated
-        </h3>
-        <p
-          style={{
-            fontSize: "var(--bw-fs-sm)",
-            color: "var(--bw-content-secondary)",
-            maxWidth: 280,
-          }}
-        >
-          Your password has been changed successfully. You can now use your new credentials to sign in.
-        </p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)" }}>
+          <h3
+            style={{
+              fontFamily: "var(--bw-font-heading)",
+              fontSize: "var(--bw-fs-h4)",
+              fontWeight: "var(--bw-fw-bold)" as any,
+              color: "var(--bw-content-primary)",
+              margin: 0,
+            }}
+          >
+            Password updated
+          </h3>
+          <p
+            style={{
+              fontSize: "var(--bw-fs-sm)",
+              color: "var(--bw-content-secondary)",
+              lineHeight: "var(--bw-lh-body)",
+              maxWidth: 300,
+              margin: "0 auto",
+            }}
+          >
+            Your password has been set. Sign in with your new password next time you log in.
+          </p>
+        </div>
       </div>
     );
   }
