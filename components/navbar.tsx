@@ -21,9 +21,10 @@ interface NavbarProps {
 export function Navbar({ fullName = "", role }: NavbarProps) {
   const router = useRouter();
   const supabase = createClient();
-   const [dropdownOpen, setDropdownOpen] = React.useState(false);
-   const [passwordModalOpen, setPasswordModalOpen] = React.useState(false);
-   const dropdownRef = React.useRef<HTMLDivElement>(null);
+  const [dropdownOpen, setDropdownOpen] = React.useState(false);
+  const [passwordModalOpen, setPasswordModalOpen] = React.useState(false);
+  const [passwordChanged, setPasswordChanged] = React.useState(false);
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
 
   const initials = fullName
     ? fullName
@@ -300,29 +301,41 @@ export function Navbar({ fullName = "", role }: NavbarProps) {
       </div>
        </nav>
 
-      <Dialog open={passwordModalOpen} onOpenChange={setPasswordModalOpen}>
+      <Dialog
+        open={passwordModalOpen}
+        onOpenChange={(open) => {
+          setPasswordModalOpen(open);
+          if (!open) setPasswordChanged(false);
+        }}
+      >
         <DialogContent
           style={{
             maxWidth: 400,
           }}
         >
-          <DialogHeader>
-            <DialogTitle>Change Password</DialogTitle>
-            <p
-              style={{
-                fontSize: "var(--bw-fs-sm)",
-                color: "var(--bw-content-secondary)",
-                marginTop: "var(--bw-space-1)",
-              }}
-            >
-              Enter a new secure password for your account.
-            </p>
-          </DialogHeader>
+          {!passwordChanged && (
+            <DialogHeader>
+              <DialogTitle>Change Password</DialogTitle>
+              <p
+                style={{
+                  fontSize: "var(--bw-fs-sm)",
+                  color: "var(--bw-content-secondary)",
+                  marginTop: "var(--bw-space-1)",
+                }}
+              >
+                Enter a new secure password for your account.
+              </p>
+            </DialogHeader>
+          )}
 
-          <div style={{ padding: "0 var(--bw-space-6) var(--bw-space-6)" }}>
+          <div style={{ padding: passwordChanged ? "var(--bw-space-2) var(--bw-space-6) var(--bw-space-6)" : "0 var(--bw-space-6) var(--bw-space-6)" }}>
             <PasswordChangeForm
               onSuccess={() => {
-                setTimeout(() => setPasswordModalOpen(false), 2000);
+                setPasswordChanged(true);
+                setTimeout(() => {
+                  setPasswordModalOpen(false);
+                  setPasswordChanged(false);
+                }, 2000);
               }}
             />
           </div>
