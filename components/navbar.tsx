@@ -4,7 +4,14 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ThemeToggle } from "./theme-toggle";
-import { LogOut, ChevronDown, User, Mail } from "lucide-react";
+import { LogOut, ChevronDown, User, Mail, ShieldCheck } from "lucide-react";
+import { PasswordChangeForm } from "./password-change-form";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 
 interface NavbarProps {
   fullName?: string;
@@ -14,8 +21,9 @@ interface NavbarProps {
 export function Navbar({ fullName = "", role }: NavbarProps) {
   const router = useRouter();
   const supabase = createClient();
-  const [dropdownOpen, setDropdownOpen] = React.useState(false);
-  const dropdownRef = React.useRef<HTMLDivElement>(null);
+   const [dropdownOpen, setDropdownOpen] = React.useState(false);
+   const [passwordModalOpen, setPasswordModalOpen] = React.useState(false);
+   const dropdownRef = React.useRef<HTMLDivElement>(null);
 
   const initials = fullName
     ? fullName
@@ -43,7 +51,8 @@ export function Navbar({ fullName = "", role }: NavbarProps) {
   }, []);
 
   return (
-    <nav
+    <>
+      <nav
       style={{
         position: "sticky",
         top: 0,
@@ -237,6 +246,32 @@ export function Navbar({ fullName = "", role }: NavbarProps) {
                 Contact Team
               </a>
 
+              {/* Change Password */}
+              <button
+                onClick={() => {
+                  setDropdownOpen(false);
+                  setPasswordModalOpen(true);
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--bw-space-2)",
+                  width: "100%",
+                  padding: "var(--bw-space-3) var(--bw-space-4)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: "var(--bw-fs-sm)",
+                  color: "var(--bw-content-primary)",
+                  transition: "background var(--bw-duration-fast)",
+                  textAlign: "left",
+                }}
+                className="bw-button--ghost"
+              >
+                <ShieldCheck size={14} />
+                Change Password
+              </button>
+
               {/* Sign out */}
               <button
                 onClick={handleSignOut}
@@ -263,6 +298,36 @@ export function Navbar({ fullName = "", role }: NavbarProps) {
           )}
         </div>
       </div>
-    </nav>
+       </nav>
+
+      <Dialog open={passwordModalOpen} onOpenChange={setPasswordModalOpen}>
+        <DialogContent
+          style={{
+            maxWidth: 400,
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Change Password</DialogTitle>
+            <p
+              style={{
+                fontSize: "var(--bw-fs-sm)",
+                color: "var(--bw-content-secondary)",
+                marginTop: "var(--bw-space-1)",
+              }}
+            >
+              Enter a new secure password for your account.
+            </p>
+          </DialogHeader>
+
+          <div style={{ padding: "0 var(--bw-space-6) var(--bw-space-6)" }}>
+            <PasswordChangeForm
+              onSuccess={() => {
+                setTimeout(() => setPasswordModalOpen(false), 2000);
+              }}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

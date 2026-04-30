@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check, ChevronRight, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { PasswordChangeForm } from "./password-change-form";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -157,6 +158,27 @@ const SLIDES: Slide[] = [
           If a result warrants discussion — an outlier, a borderline team, or a
           scoring misalignment — coordinate directly with your co-evaluator to
           reach a consensus.
+        </p>
+      </div>
+    ),
+  },
+  {
+    eyebrow: "SECURITY",
+    heading: "Change your password.",
+    body: (
+      <div className="space-y-4">
+        <p>
+          To ensure the integrity of the evaluation process, we recommend
+          updating your temporary password to a secure, private one.
+        </p>
+        <p
+          style={{
+            fontSize: "var(--bw-fs-sm)",
+            color: "var(--bw-content-secondary)",
+          }}
+        >
+          You can skip this step and change it later from your profile settings
+          at any time.
         </p>
       </div>
     ),
@@ -398,21 +420,32 @@ export function OnboardingModal({
                 color: "var(--bw-content-secondary)",
               }}
             >
-              {slide.body}
+              {step === TOTAL_STEPS - 1 ? (
+                <div>
+                  <PasswordChangeForm
+                    onSuccess={handleClose}
+                    onSkip={handleClose}
+                    showSkip={true}
+                  />
+                </div>
+              ) : (
+                slide.body
+              )}
             </div>
           </div>
 
           {/* ── Bottom navigation bar ── */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginTop: "var(--bw-space-8)",
-              paddingTop: "var(--bw-space-5)",
-              borderTop: "1px solid var(--bw-border)",
-            }}
-          >
+          {step < TOTAL_STEPS - 1 && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginTop: "var(--bw-space-8)",
+                paddingTop: "var(--bw-space-5)",
+                borderTop: "1px solid var(--bw-border)",
+              }}
+            >
             {/* Skip / Back */}
             <div className="flex-1 flex justify-start">
               <button
@@ -488,6 +521,7 @@ export function OnboardingModal({
               </button>
             </div>
           </div>
+          )}
         </div>
       </div>
 
