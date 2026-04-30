@@ -14,46 +14,63 @@ export default function ResetPasswordPage() {
   const supabase = createClient();
 
   React.useEffect(() => {
-    // Listen for auth state changes, specifically PASSWORD_RECOVERY
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("Auth event:", event);
-      if (event === "PASSWORD_RECOVERY" || session) {
-        setHasSession(true);
-        setInitializing(false);
-      }
-    });
+    const init = async () => {
+      // PKCE flow: Supabase sends ?code=xxx in the URL query params
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get("code");
 
-    const checkSession = async () => {
-      const { data, error } = await supabase.auth.getSession();
-      
+      if (code) {
+        // Exchange the code for a session server-side
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (!error) {
+          setHasSession(true);
+          setInitializing(false);
+          return;
+        } else {
+          console.error("Code exchange failed:", error.message);
+        }
+      }
+
+      // Implicit / fragment flow: Supabase puts #access_token=xxx in the URL hash.
+      // onAuthStateChange fires PASSWORD_RECOVERY when the SDK picks up the hash.
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === "PASSWORD_RECOVERY" && session) {
+          setHasSession(true);
+          setInitializing(false);
+        }
+      });
+
+      // Also check if a session already exists (e.g. hash was processed synchronously)
+      const { data } = await supabase.auth.getSession();
       if (data.session) {
         setHasSession(true);
         setInitializing(false);
-      } else {
-        // Fallback: wait up to 3 seconds for the client to parse the URL fragment
-        let retries = 0;
-        const interval = setInterval(async () => {
-          retries++;
-          const { data: retryData } = await supabase.auth.getSession();
-          if (retryData.session) {
-            setHasSession(true);
-            setInitializing(false);
-            clearInterval(interval);
-          } else if (retries >= 3) {
-            setHasSession(false);
-            setInitializing(false);
-            clearInterval(interval);
-            toast.error("Invalid or expired password reset link.");
-            // Do not redirect immediately to allow user to see error
-          }
-        }, 1000);
-        return () => clearInterval(interval);
+        subscription.unsubscribe();
+        return;
       }
+
+      // Give the SDK up to 3s to parse the hash fragment before giving up
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        attempts++;
+        const { data: polled } = await supabase.auth.getSession();
+        if (polled.session) {
+          setHasSession(true);
+          setInitializing(false);
+          clearInterval(poll);
+          subscription.unsubscribe();
+        } else if (attempts >= 3) {
+          clearInterval(poll);
+          subscription.unsubscribe();
+          setHasSession(false);
+          setInitializing(false);
+          toast.error("This password reset link is invalid or has expired.");
+        }
+      }, 1000);
     };
 
-    checkSession();
-    return () => subscription.unsubscribe();
-  }, [supabase, router]);
+    init();
+  }, [supabase]);
 
   const handleSuccess = () => {
     toast.success("Password reset complete. Please sign in with your new password.");
