@@ -330,7 +330,7 @@ export function EvaluationViewClient({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ), [scores, notes, globalNotes, isEditing, sections, handleScoreChange, handleNotesChange, handleLockedInteraction, maxPossibleScore, totalScore]);
 
-  const RubricForm = <RubricFormContent />;
+  const RubricForm = RubricFormContent();
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-4)", maxWidth: hasMedia ? 1600 : 1024, margin: "0 auto", paddingBottom: "calc(96px + env(safe-area-inset-bottom))", position: "relative" }}>
