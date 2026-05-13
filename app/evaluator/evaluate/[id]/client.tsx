@@ -187,7 +187,7 @@ export function EvaluationViewClient({
       const evaluationRows = allCriteria.map((criterion) => ({
         rubric_criterion_id: criterion.id,
         score: scores[criterion.id] ?? 0,
-        notes: notes[criterion.id] || globalNotes || "",
+        notes: notes[criterion.id] || "",
       }));
 
       const { error: rpcError } = await supabase.rpc("submit_evaluation", {
