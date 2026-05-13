@@ -21,6 +21,7 @@ export default async function AdminDashboardPage() {
         evaluator_id,
         rubric_criterion_id,
         score,
+        notes,
         rubric_criteria (
           name,
           max_score
@@ -39,7 +40,7 @@ export default async function AdminDashboardPage() {
   const breakdownData: Record<string, any[]> = {};
   if (evaluations) {
     // proposal_id -> Map<criterion_id, { name, max_score, scores: { [evaluator_id]: score } }>
-    const accumulator: Record<string, Map<string, { name: string; max_score: number; scores: Record<string, number> }>> = {};
+    const accumulator: Record<string, Map<string, { name: string; max_score: number; scores: Record<string, number>; notes: Record<string, string> }>> = {};
 
     evaluations.forEach((ev) => {
       const criteria = Array.isArray(ev.rubric_criteria) ? ev.rubric_criteria[0] : ev.rubric_criteria;
@@ -55,9 +56,13 @@ export default async function AdminDashboardPage() {
           name: (criteria as any).name,
           max_score: (criteria as any).max_score,
           scores: {},
+          notes: {},
         });
       }
       accumulator[ev.proposal_id].get(key)!.scores[ev.evaluator_id] = ev.score;
+      if (ev.notes) {
+        accumulator[ev.proposal_id].get(key)!.notes[ev.evaluator_id] = ev.notes;
+      }
     });
 
     for (const [proposalId, criteriaMap] of Object.entries(accumulator)) {

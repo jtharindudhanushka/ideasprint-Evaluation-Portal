@@ -109,7 +109,7 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
   };
 
   const renderBreakdownDialog = (proposal: Proposal, trigger: React.ReactNode, isIcon?: boolean) => {
-    const criteriaData = (breakdownData[proposal.id] || []) as { name: string; max_score: number; scores: Record<string, number> }[];
+    const criteriaData = (breakdownData[proposal.id] || []) as { name: string; max_score: number; scores: Record<string, number>; notes: Record<string, string> }[];
     const assignedEvaluatorIds = assignments
       .filter((a) => a.proposal_id === proposal.id)
       .map((a) => a.evaluator_id);
@@ -229,6 +229,44 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
                 </Table>
               </div>
             </div>
+
+            {/* Evaluator Comments — admin sees all, grouped by evaluator */}
+            {(() => {
+              const commentsByEvaluator = assignedEvaluators.map(evaluator => {
+                const criteriaWithNotes = criteriaData
+                  .filter(c => (c.notes as Record<string, string>)?.[evaluator.id])
+                  .map(c => ({
+                    name: c.name,
+                    note: (c.notes as Record<string, string>)[evaluator.id],
+                  }));
+                return { evaluator, criteriaWithNotes };
+              }).filter(e => e.criteriaWithNotes.length > 0);
+
+              if (commentsByEvaluator.length === 0) return null;
+
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-3)" }}>
+                  <div style={{ fontSize: "var(--bw-fs-xs)", fontWeight: "var(--bw-fw-medium)" as any, color: "var(--bw-content-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    Evaluator Comments
+                  </div>
+                  {commentsByEvaluator.map(({ evaluator, criteriaWithNotes }) => (
+                    <div key={evaluator.id} style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)", background: "var(--bw-chip)", padding: "var(--bw-space-3)", borderRadius: "var(--bw-radius-md)" }}>
+                      <div style={{ fontSize: "var(--bw-fs-xs)", fontWeight: "var(--bw-fw-medium)" as any, color: "var(--bw-content-secondary)", marginBottom: "var(--bw-space-1)" }}>
+                        {evaluator.name}
+                      </div>
+                      {criteriaWithNotes.map((item, i) => (
+                        <div key={i} style={{ display: "flex", flexDirection: "column", gap: 2, paddingBottom: i < criteriaWithNotes.length - 1 ? "var(--bw-space-2)" : 0, borderBottom: i < criteriaWithNotes.length - 1 ? "1px dashed var(--bw-border)" : "none" }}>
+                          <span style={{ fontSize: "10px", color: "var(--bw-content-tertiary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>{item.name}</span>
+                          <p style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-primary)", margin: 0, paddingLeft: 4, borderLeft: "2px solid var(--bw-border)", fontStyle: "italic" }}>
+                            {item.note}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
 
             {/* Links */}
             <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)", borderTop: "1px solid var(--bw-border)", paddingTop: "var(--bw-space-4)" }}>

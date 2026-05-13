@@ -30,6 +30,7 @@ export default async function EvaluatorDashboardPage() {
         evaluator_id,
         rubric_criterion_id,
         score,
+        notes,
         rubric_criteria (
           name,
           max_score
@@ -65,7 +66,7 @@ export default async function EvaluatorDashboardPage() {
 
   // Build breakdown for this evaluator's own scores only (for full rubric display)
   const breakdownData: Record<string, any[]> = {};
-  const accumulator: Record<string, Map<string, { name: string; score: number; max_score: number }>> = {};
+  const accumulator: Record<string, Map<string, { name: string; score: number; max_score: number; notes: string }>> = {};
   myEvaluations.forEach((ev) => {
     const criteria = Array.isArray(ev.rubric_criteria) ? ev.rubric_criteria[0] : ev.rubric_criteria;
     if (!criteria) return;
@@ -77,6 +78,7 @@ export default async function EvaluatorDashboardPage() {
       name: (criteria as any).name,
       score: ev.score,
       max_score: (criteria as any).max_score,
+      notes: ev.notes ?? "",
     });
   });
   for (const [proposalId, criteriaMap] of Object.entries(accumulator)) {

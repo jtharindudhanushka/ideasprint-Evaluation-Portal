@@ -275,18 +275,25 @@ export function EvaluatorDashboardClient({
               </div>
             )}
 
-            {/* Full rubric — only for own evaluation */}
             {isGradedByMe && breakdownData?.[proposal.id] && (
               <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)", borderTop: "1px solid var(--bw-border)", paddingTop: "var(--bw-space-4)" }}>
                 <div style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-tertiary)", marginBottom: "var(--bw-space-1)" }}>Your Rubric Breakdown</div>
                 {breakdownData[proposal.id].map((criterion, i) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--bw-fs-sm)", padding: "var(--bw-space-2) 0", borderBottom: i < breakdownData![proposal.id].length - 1 ? "1px dashed var(--bw-border)" : "none" }}>
-                    <span style={{ color: "var(--bw-content-secondary)", paddingRight: 16 }}>{criterion.name}</span>
-                    <span style={{ fontWeight: "var(--bw-fw-medium)" as any }}>{criterion.score}/{criterion.max_score}</span>
+                  <div key={i} style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-1)", padding: "var(--bw-space-2) 0", borderBottom: i < breakdownData![proposal.id].length - 1 ? "1px dashed var(--bw-border)" : "none" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--bw-fs-sm)" }}>
+                      <span style={{ color: "var(--bw-content-secondary)", paddingRight: 16 }}>{criterion.name}</span>
+                      <span style={{ fontWeight: "var(--bw-fw-medium)" as any }}>{criterion.score}/{criterion.max_score}</span>
+                    </div>
+                    {criterion.notes && (
+                      <p style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-tertiary)", fontStyle: "italic", margin: 0, paddingLeft: 4, borderLeft: "2px solid var(--bw-border)" }}>
+                        {criterion.notes}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
             )}
+
 
             <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)", borderTop: "1px solid var(--bw-border)", paddingTop: "var(--bw-space-4)" }}>
               {proposal.proposal_url && (
