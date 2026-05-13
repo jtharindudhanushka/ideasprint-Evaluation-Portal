@@ -278,19 +278,44 @@ export function EvaluatorDashboardClient({
             {isGradedByMe && breakdownData?.[proposal.id] && (
               <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)", borderTop: "1px solid var(--bw-border)", paddingTop: "var(--bw-space-4)" }}>
                 <div style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-tertiary)", marginBottom: "var(--bw-space-1)" }}>Your Rubric Breakdown</div>
-                {breakdownData[proposal.id].map((criterion, i) => (
-                  <div key={i} style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-1)", padding: "var(--bw-space-2) 0", borderBottom: i < breakdownData![proposal.id].length - 1 ? "1px dashed var(--bw-border)" : "none" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--bw-fs-sm)" }}>
-                      <span style={{ color: "var(--bw-content-secondary)", paddingRight: 16 }}>{criterion.name}</span>
-                      <span style={{ fontWeight: "var(--bw-fw-medium)" as any }}>{criterion.score}/{criterion.max_score}</span>
+                {(() => {
+                  // Deduplicate bleed-through: same note on >1 criterion → show once as Overall Comment
+                  const noteFreq: Record<string, number> = {};
+                  breakdownData[proposal.id].forEach(c => {
+                    if (c.notes?.trim()) noteFreq[c.notes] = (noteFreq[c.notes] ?? 0) + 1;
+                  });
+                  const bleedText = Object.entries(noteFreq).find(([, cnt]) => cnt > 1)?.[0];
+
+                  return breakdownData[proposal.id].map((criterion, i) => (
+                    <div key={i} style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-1)", padding: "var(--bw-space-2) 0", borderBottom: i < breakdownData![proposal.id].length - 1 ? "1px dashed var(--bw-border)" : "none" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "var(--bw-fs-sm)" }}>
+                        <span style={{ color: "var(--bw-content-secondary)", paddingRight: 16 }}>{criterion.name}</span>
+                        <span style={{ fontWeight: "var(--bw-fw-medium)" as any }}>{criterion.score}/{criterion.max_score}</span>
+                      </div>
+                      {/* Only show the note if it's unique to this criterion (not a bleed-through) */}
+                      {criterion.notes && criterion.notes !== bleedText && (
+                        <p style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-tertiary)", fontStyle: "italic", margin: 0, paddingLeft: 4, borderLeft: "2px solid var(--bw-border)" }}>
+                          {criterion.notes}
+                        </p>
+                      )}
                     </div>
-                    {criterion.notes && (
-                      <p style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-tertiary)", fontStyle: "italic", margin: 0, paddingLeft: 4, borderLeft: "2px solid var(--bw-border)" }}>
-                        {criterion.notes}
-                      </p>
-                    )}
-                  </div>
-                ))}
+                  ));
+                })()}
+                {/* Show bleed-through note once as Overall Comment */}
+                {(() => {
+                  const noteFreq: Record<string, number> = {};
+                  breakdownData[proposal.id].forEach(c => {
+                    if (c.notes?.trim()) noteFreq[c.notes] = (noteFreq[c.notes] ?? 0) + 1;
+                  });
+                  const bleedText = Object.entries(noteFreq).find(([, cnt]) => cnt > 1)?.[0];
+                  if (!bleedText) return null;
+                  return (
+                    <div style={{ marginTop: "var(--bw-space-2)", padding: "var(--bw-space-3)", background: "var(--bw-chip)", borderRadius: "var(--bw-radius-md)" }}>
+                      <div style={{ fontSize: "10px", color: "var(--bw-content-tertiary)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>Overall Comment</div>
+                      <p style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-primary)", margin: 0, fontStyle: "italic" }}>{bleedText}</p>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 

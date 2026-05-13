@@ -103,11 +103,35 @@ export function EvaluationViewClient({
 
       existingEvaluations.forEach((ev) => {
         initialScores[ev.rubric_criterion_id] = ev.score;
-        initialNotes[ev.rubric_criterion_id] = ev.notes;
+        if (ev.notes) initialNotes[ev.rubric_criterion_id] = ev.notes;
       });
 
       setScores(initialScores);
-      setNotes(initialNotes);
+
+      // ── Bleed-through detection ───────────────────────────────────────
+      // The old bug stored globalNotes into every criterion that had no
+      // individual note. Signature: the same non-empty text appears on
+      // more than one criterion. Migrate it to globalNotes and strip it
+      // from per-criterion notes so the UI shows it in the right place.
+      const noteFrequency: Record<string, number> = {};
+      Object.values(initialNotes).forEach((note) => {
+        if (note.trim()) noteFrequency[note] = (noteFrequency[note] ?? 0) + 1;
+      });
+
+      const bleedThroughText = Object.entries(noteFrequency)
+        .find(([, count]) => count > 1)?.[0];
+
+      if (bleedThroughText) {
+        setGlobalNotes(bleedThroughText);
+        // Keep only notes that are genuinely unique to one criterion
+        const cleanNotes: Record<string, string> = {};
+        Object.entries(initialNotes).forEach(([id, note]) => {
+          if (note !== bleedThroughText) cleanNotes[id] = note;
+        });
+        setNotes(cleanNotes);
+      } else {
+        setNotes(initialNotes);
+      }
     }
   }, [existingEvaluations]);
 

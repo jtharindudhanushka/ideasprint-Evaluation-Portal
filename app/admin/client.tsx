@@ -233,13 +233,30 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
             {/* Evaluator Comments — admin sees all, grouped by evaluator */}
             {(() => {
               const commentsByEvaluator = assignedEvaluators.map(evaluator => {
-                const criteriaWithNotes = criteriaData
+                const rawNotes = criteriaData
                   .filter(c => (c.notes as Record<string, string>)?.[evaluator.id])
                   .map(c => ({
                     name: c.name,
                     note: (c.notes as Record<string, string>)[evaluator.id],
                   }));
-                return { evaluator, criteriaWithNotes };
+
+                // Deduplicate: if a note appears on >1 criterion it's a bleed-through
+                const noteFreq: Record<string, number> = {};
+                rawNotes.forEach(({ note }) => {
+                  noteFreq[note] = (noteFreq[note] ?? 0) + 1;
+                });
+                const bleedText = Object.entries(noteFreq).find(([, c]) => c > 1)?.[0];
+
+                const uniqueItems = bleedText
+                  ? [
+                      // Show bleed-through once as "Overall Comment"
+                      { name: "Overall Comment", note: bleedText },
+                      // Keep any genuinely unique per-criterion notes
+                      ...rawNotes.filter(r => r.note !== bleedText),
+                    ]
+                  : rawNotes;
+
+                return { evaluator, criteriaWithNotes: uniqueItems };
               }).filter(e => e.criteriaWithNotes.length > 0);
 
               if (commentsByEvaluator.length === 0) return null;
