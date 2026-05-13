@@ -33,7 +33,8 @@ export default async function EvaluationPage({ params }: PageProps) {
     { data: existingEvaluations },
     { data: annotations },
     { data: videoComments },
-    { data: profile }
+    { data: profile },
+    { data: overallNote }
   ] = await Promise.all([
     supabase.from("proposals").select("*").eq("id", id).single(),
     supabase.from("proposal_assignments").select("*").eq("proposal_id", id).eq("evaluator_id", user.id).single(),
@@ -41,7 +42,8 @@ export default async function EvaluationPage({ params }: PageProps) {
     supabase.from("evaluations").select("*").eq("proposal_id", id).eq("evaluator_id", user.id),
     supabase.from("pdf_annotations").select("*").eq("proposal_id", id),
     supabase.from("video_comments").select("*").eq("proposal_id", id),
-    supabase.from("profiles").select("full_name").eq("id", user.id).single()
+    supabase.from("profiles").select("full_name").eq("id", user.id).single(),
+    supabase.from("evaluation_overall_notes").select("notes").eq("proposal_id", id).eq("evaluator_id", user.id).maybeSingle()
   ]);
 
   if (!proposal) redirect("/evaluator");
@@ -71,7 +73,9 @@ export default async function EvaluationPage({ params }: PageProps) {
       annotations={annotations ?? []}
       videoComments={videoComments ?? []}
       evaluatorName={profile?.full_name ?? ""}
+      initialOverallNotes={overallNote?.notes ?? ""}
     />
   );
 }
+
 

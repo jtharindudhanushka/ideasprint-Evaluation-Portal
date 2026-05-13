@@ -37,9 +37,10 @@ interface Props {
   evaluators?: Pick<Profile, "id" | "full_name">[];
   evaluatorByProposal?: Record<string, string[]>;
   assignments?: ProposalAssignment[];
+  overallNotesByProposal?: Record<string, Record<string, string>>;
 }
 
-export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators = [], evaluatorByProposal = {}, assignments = [] }: Props) {
+export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators = [], evaluatorByProposal = {}, assignments = [], overallNotesByProposal = {} }: Props) {
   const [searchQuery, setSearchQuery] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -233,31 +234,24 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
             {/* Evaluator Comments — admin sees all, grouped by evaluator */}
             {(() => {
               const commentsByEvaluator = assignedEvaluators.map(evaluator => {
+                // Per-criterion unique notes (dedup bleed-through for legacy data)
                 const rawNotes = criteriaData
                   .filter(c => (c.notes as Record<string, string>)?.[evaluator.id])
-                  .map(c => ({
-                    name: c.name,
-                    note: (c.notes as Record<string, string>)[evaluator.id],
-                  }));
+                  .map(c => ({ name: c.name, note: (c.notes as Record<string, string>)[evaluator.id] }));
 
-                // Deduplicate: if a note appears on >1 criterion it's a bleed-through
                 const noteFreq: Record<string, number> = {};
-                rawNotes.forEach(({ note }) => {
-                  noteFreq[note] = (noteFreq[note] ?? 0) + 1;
-                });
+                rawNotes.forEach(({ note }) => { noteFreq[note] = (noteFreq[note] ?? 0) + 1; });
                 const bleedText = Object.entries(noteFreq).find(([, c]) => c > 1)?.[0];
-
-                const uniqueItems = bleedText
-                  ? [
-                      // Show bleed-through once as "Overall Comment"
-                      { name: "Overall Comment", note: bleedText },
-                      // Keep any genuinely unique per-criterion notes
-                      ...rawNotes.filter(r => r.note !== bleedText),
-                    ]
+                const uniqueCriterionNotes = bleedText
+                  ? rawNotes.filter(r => r.note !== bleedText)
                   : rawNotes;
 
-                return { evaluator, criteriaWithNotes: uniqueItems };
-              }).filter(e => e.criteriaWithNotes.length > 0);
+                // Overall note from the dedicated table (source of truth for new submissions)
+                const overallNote = overallNotesByProposal[proposal.id]?.[evaluator.id]
+                  || bleedText || "";
+
+                return { evaluator, uniqueCriterionNotes, overallNote };
+              }).filter(e => e.uniqueCriterionNotes.length > 0 || e.overallNote);
 
               if (commentsByEvaluator.length === 0) return null;
 
@@ -266,17 +260,21 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
                   <div style={{ fontSize: "var(--bw-fs-xs)", fontWeight: "var(--bw-fw-medium)" as any, color: "var(--bw-content-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                     Evaluator Comments
                   </div>
-                  {commentsByEvaluator.map(({ evaluator, criteriaWithNotes }) => (
+                  {commentsByEvaluator.map(({ evaluator, uniqueCriterionNotes, overallNote }) => (
                     <div key={evaluator.id} style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)", background: "var(--bw-chip)", padding: "var(--bw-space-3)", borderRadius: "var(--bw-radius-md)" }}>
                       <div style={{ fontSize: "var(--bw-fs-xs)", fontWeight: "var(--bw-fw-medium)" as any, color: "var(--bw-content-secondary)", marginBottom: "var(--bw-space-1)" }}>
                         {evaluator.name}
                       </div>
-                      {criteriaWithNotes.map((item, i) => (
-                        <div key={i} style={{ display: "flex", flexDirection: "column", gap: 2, paddingBottom: i < criteriaWithNotes.length - 1 ? "var(--bw-space-2)" : 0, borderBottom: i < criteriaWithNotes.length - 1 ? "1px dashed var(--bw-border)" : "none" }}>
+                      {overallNote && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingBottom: uniqueCriterionNotes.length > 0 ? "var(--bw-space-2)" : 0, borderBottom: uniqueCriterionNotes.length > 0 ? "1px dashed var(--bw-border)" : "none" }}>
+                          <span style={{ fontSize: "10px", color: "var(--bw-content-tertiary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Overall Comment</span>
+                          <p style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-primary)", margin: 0, paddingLeft: 4, borderLeft: "2px solid var(--bw-border)", fontStyle: "italic" }}>{overallNote}</p>
+                        </div>
+                      )}
+                      {uniqueCriterionNotes.map((item, i) => (
+                        <div key={i} style={{ display: "flex", flexDirection: "column", gap: 2, paddingBottom: i < uniqueCriterionNotes.length - 1 ? "var(--bw-space-2)" : 0, borderBottom: i < uniqueCriterionNotes.length - 1 ? "1px dashed var(--bw-border)" : "none" }}>
                           <span style={{ fontSize: "10px", color: "var(--bw-content-tertiary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>{item.name}</span>
-                          <p style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-primary)", margin: 0, paddingLeft: 4, borderLeft: "2px solid var(--bw-border)", fontStyle: "italic" }}>
-                            {item.note}
-                          </p>
+                          <p style={{ fontSize: "var(--bw-fs-xs)", color: "var(--bw-content-primary)", margin: 0, paddingLeft: 4, borderLeft: "2px solid var(--bw-border)", fontStyle: "italic" }}>{item.note}</p>
                         </div>
                       ))}
                     </div>

@@ -16,7 +16,8 @@ export default async function EvaluatorDashboardPage() {
     { data: allEvaluations },
     { data: profiles },
     { data: assignments },
-    { data: settings }
+    { data: settings },
+    { data: myOverallNotesRows }
   ] = await Promise.all([
     supabase
       .from("proposals")
@@ -46,7 +47,11 @@ export default async function EvaluatorDashboardPage() {
       .from("system_settings")
       .select("*")
       .eq("key", "evaluation_deadline")
-      .single()
+      .single(),
+    supabase
+      .from("evaluation_overall_notes")
+      .select("proposal_id, notes")
+      .eq("evaluator_id", user.id)
   ]);
 
   let daysLeft = "14";
@@ -118,6 +123,14 @@ export default async function EvaluatorDashboardPage() {
     }
   }
 
+  // Build map: proposalId -> overall note text (this evaluator only)
+  const myOverallNotes: Record<string, string> = {};
+  if (myOverallNotesRows) {
+    for (const row of myOverallNotesRows) {
+      myOverallNotes[row.proposal_id] = row.notes;
+    }
+  }
+
   return (
     <EvaluatorDashboardClient
       proposals={proposals ?? []}
@@ -131,6 +144,7 @@ export default async function EvaluatorDashboardPage() {
       serverNow={new Date().toISOString()}
       daysLeft={daysLeft}
       hasSeenOnboarding={profiles?.find(p => p.id === user!.id)?.has_seen_onboarding ?? true}
+      myOverallNotes={myOverallNotes}
     />
   );
 }

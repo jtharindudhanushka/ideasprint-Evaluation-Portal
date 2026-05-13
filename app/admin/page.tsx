@@ -8,7 +8,8 @@ export default async function AdminDashboardPage() {
     { data: proposals },
     { data: evaluations },
     { data: evaluators },
-    { data: assignments }
+    { data: assignments },
+    { data: overallNotes }
   ] = await Promise.all([
     supabase
       .from("proposals")
@@ -33,7 +34,10 @@ export default async function AdminDashboardPage() {
       .eq("role", "evaluator"),
     supabase
       .from("proposal_assignments")
-      .select("*")
+      .select("*"),
+    supabase
+      .from("evaluation_overall_notes")
+      .select("proposal_id, evaluator_id, notes")
   ]);
 
   // Group evaluations by proposal_id, storing individual scores per evaluator
@@ -85,6 +89,17 @@ export default async function AdminDashboardPage() {
     }
   }
 
+  // Build map: proposalId -> evaluatorId -> overall note text
+  const overallNotesByProposal: Record<string, Record<string, string>> = {};
+  if (overallNotes) {
+    for (const row of overallNotes) {
+      if (!overallNotesByProposal[row.proposal_id]) {
+        overallNotesByProposal[row.proposal_id] = {};
+      }
+      overallNotesByProposal[row.proposal_id][row.evaluator_id] = row.notes;
+    }
+  }
+
   return (
     <AdminDashboardClient
       proposals={proposals ?? []}
@@ -92,6 +107,7 @@ export default async function AdminDashboardPage() {
       evaluators={evaluators ?? []}
       evaluatorByProposal={evaluatorByProposal}
       assignments={assignments ?? []}
+      overallNotesByProposal={overallNotesByProposal}
     />
   );
 }

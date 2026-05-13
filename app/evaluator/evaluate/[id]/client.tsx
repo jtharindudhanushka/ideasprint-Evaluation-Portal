@@ -51,6 +51,7 @@ interface Props {
   annotations?: PdfAnnotation[];
   videoComments?: VideoComment[];
   evaluatorName?: string;
+  initialOverallNotes?: string;
 }
 
 const getBandColor = (text: string) => {
@@ -71,13 +72,16 @@ export function EvaluationViewClient({
   annotations = [],
   videoComments = [],
   evaluatorName = "",
+  initialOverallNotes = "",
 }: Props) {
   const supabase = createClient();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [scores, setScores] = useState<Record<string, number>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
-  const [globalNotes, setGlobalNotes] = useState("");
+  // Initialise from DB-saved overall note; bleed-through detection may
+  // override this if the table row doesn't exist yet for old submissions.
+  const [globalNotes, setGlobalNotes] = useState(initialOverallNotes);
 
   const isAlreadyGraded = existingEvaluations.length > 0;
   const [isEditing, setIsEditing] = useState(!isAlreadyGraded);
@@ -220,6 +224,17 @@ export function EvaluationViewClient({
       });
 
       if (rpcError) throw rpcError;
+
+      // Persist overall comment — non-blocking, never prevents submit
+      supabase
+        .from("evaluation_overall_notes")
+        .upsert(
+          { proposal_id: proposal.id, notes: globalNotes, updated_at: new Date().toISOString() },
+          { onConflict: "proposal_id,evaluator_id" }
+        )
+        .then(({ error }) => {
+          if (error) console.warn("[overall_notes] upsert failed (non-fatal):", error.message);
+        });
 
       // Kick off snapshot in background — does NOT await, never blocks the user
       fireSnapshot(evaluationRows);

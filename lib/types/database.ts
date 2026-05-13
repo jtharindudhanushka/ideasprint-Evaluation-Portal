@@ -118,3 +118,11 @@ export interface EvaluationFormData {
   notes: Record<string, string>; // rubric_criterion_id -> notes
   global_notes: string;
 }
+
+export interface EvaluationOverallNote {
+  proposal_id: string;
+  evaluator_id: string;
+  notes: string;
+  updated_at: string;
+}
+
