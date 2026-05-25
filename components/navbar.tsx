@@ -4,8 +4,10 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ThemeToggle } from "./theme-toggle";
-import { LogOut, ChevronDown, User, Mail, ShieldCheck } from "lucide-react";
+import { LogOut, ChevronDown, Mail, ShieldCheck, MessageSquare } from "lucide-react";
 import { PasswordChangeForm } from "./password-change-form";
+import { FeedbackModal } from "./feedback-modal";
+import type { EvaluatorFeedback } from "@/lib/types/database";
 import {
   Dialog,
   DialogContent,
@@ -24,7 +26,19 @@ export function Navbar({ fullName = "", role }: NavbarProps) {
   const [dropdownOpen, setDropdownOpen] = React.useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = React.useState(false);
   const [passwordChanged, setPasswordChanged] = React.useState(false);
+  const [feedbackModalOpen, setFeedbackModalOpen] = React.useState(false);
+  const [feedbackRecord, setFeedbackRecord] = React.useState<EvaluatorFeedback | null>(null);
+  const [feedbackLoaded, setFeedbackLoaded] = React.useState(false);
+  const [navUserId, setNavUserId] = React.useState<string>("");
   const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  // Fetch current user ID once on mount
+  React.useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setNavUserId(user.id);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const initials = fullName
     ? fullName
@@ -40,6 +54,25 @@ export function Navbar({ fullName = "", role }: NavbarProps) {
     router.push("/login");
   };
 
+  // Fetch existing feedback record lazily when dropdown opens (evaluator only)
+  const handleDropdownOpen = async () => {
+    setDropdownOpen(true);
+    if (role === "evaluator" && !feedbackLoaded && navUserId) {
+      const { data } = await supabase
+        .from("evaluator_feedback")
+        .select("*")
+        .eq("evaluator_id", navUserId)
+        .maybeSingle();
+      setFeedbackRecord(data ?? null);
+      setFeedbackLoaded(true);
+    }
+  };
+
+  const handleFeedbackClick = () => {
+    setDropdownOpen(false);
+    setFeedbackModalOpen(true);
+  };
+
   // Close dropdown on click outside
   React.useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -50,6 +83,10 @@ export function Navbar({ fullName = "", role }: NavbarProps) {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const feedbackButtonLabel = feedbackRecord?.overall_rating
+    ? "Edit Feedback"
+    : "Give Feedback";
 
   return (
     <>
@@ -120,7 +157,7 @@ export function Navbar({ fullName = "", role }: NavbarProps) {
         {/* User dropdown */}
         <div ref={dropdownRef} style={{ position: "relative" }}>
           <button
-            onClick={() => setDropdownOpen(!dropdownOpen)}
+            onClick={() => dropdownOpen ? setDropdownOpen(false) : handleDropdownOpen()}
             style={{
               display: "flex",
               alignItems: "center",
@@ -187,7 +224,7 @@ export function Navbar({ fullName = "", role }: NavbarProps) {
                 borderRadius: "var(--bw-radius-md)",
                 boxShadow: "var(--bw-shadow-200)",
                 border: "1px solid var(--bw-border)",
-                minWidth: 180,
+                minWidth: 200,
                 padding: "var(--bw-space-1) 0",
                 animation: "bw-fade-in var(--bw-duration-fast) var(--bw-easing)",
                 zIndex: 100,
@@ -247,6 +284,59 @@ export function Navbar({ fullName = "", role }: NavbarProps) {
                 Contact Team
               </a>
 
+              {/* Give Feedback — evaluators only */}
+              {role === "evaluator" && (
+                <button
+                  onClick={handleFeedbackClick}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "var(--bw-space-2)",
+                    width: "100%",
+                    padding: "var(--bw-space-3) var(--bw-space-4)",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: "var(--bw-fs-sm)",
+                    color: "var(--bw-content-primary)",
+                    transition: "background var(--bw-duration-fast)",
+                    textAlign: "left",
+                    fontFamily: "var(--bw-font-body)",
+                  }}
+                  className="bw-button--ghost"
+                >
+                  <MessageSquare size={14} />
+                  {feedbackButtonLabel}
+                </button>
+              )}
+
+              {/* View Feedback — admin only */}
+              {role === "admin" && (
+                <a
+                  href="/admin/feedback"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "var(--bw-space-2)",
+                    width: "100%",
+                    padding: "var(--bw-space-3) var(--bw-space-4)",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: "var(--bw-fs-sm)",
+                    color: "var(--bw-content-primary)",
+                    transition: "background var(--bw-duration-fast)",
+                    textAlign: "left",
+                    textDecoration: "none",
+                  }}
+                  className="bw-button--ghost"
+                  onClick={() => setDropdownOpen(false)}
+                >
+                  <MessageSquare size={14} />
+                  View Feedback
+                </a>
+              )}
+
               {/* Change Password */}
               <button
                 onClick={() => {
@@ -266,6 +356,7 @@ export function Navbar({ fullName = "", role }: NavbarProps) {
                   color: "var(--bw-content-primary)",
                   transition: "background var(--bw-duration-fast)",
                   textAlign: "left",
+                  fontFamily: "var(--bw-font-body)",
                 }}
                 className="bw-button--ghost"
               >
@@ -289,6 +380,7 @@ export function Navbar({ fullName = "", role }: NavbarProps) {
                   color: "var(--bw-content-primary)",
                   transition: "background var(--bw-duration-fast)",
                   textAlign: "left",
+                  fontFamily: "var(--bw-font-body)",
                 }}
                 className="bw-button--ghost"
               >
@@ -301,6 +393,7 @@ export function Navbar({ fullName = "", role }: NavbarProps) {
       </div>
        </nav>
 
+      {/* Password Change Dialog */}
       <Dialog
         open={passwordModalOpen}
         onOpenChange={(open) => {
@@ -341,6 +434,17 @@ export function Navbar({ fullName = "", role }: NavbarProps) {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Feedback Modal — evaluators only */}
+      {role === "evaluator" && navUserId && (
+        <FeedbackModal
+          isOpen={feedbackModalOpen}
+          onClose={() => setFeedbackModalOpen(false)}
+          currentUserId={navUserId}
+          existingFeedback={feedbackRecord}
+          onSubmitted={(fb) => setFeedbackRecord(fb)}
+        />
+      )}
     </>
   );
 }

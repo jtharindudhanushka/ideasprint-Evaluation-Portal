@@ -47,7 +47,8 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { OnboardingModal } from "@/components/onboarding-modal";
-import type { Proposal, Profile, ProposalAssignment } from "@/lib/types/database";
+import { FeedbackModal } from "@/components/feedback-modal";
+import type { Proposal, Profile, ProposalAssignment, EvaluatorFeedback } from "@/lib/types/database";
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -64,6 +65,8 @@ interface Props {
   daysLeft?: string;
   hasSeenOnboarding?: boolean;
   myOverallNotes?: Record<string, string>;
+  feedbackRecord?: EvaluatorFeedback | null;
+  hasSeenFeedbackPrompt?: boolean;
 }
 
 export function EvaluatorDashboardClient({
@@ -78,6 +81,8 @@ export function EvaluatorDashboardClient({
   daysLeft = "14",
   hasSeenOnboarding = true,
   myOverallNotes = {},
+  feedbackRecord = null,
+  hasSeenFeedbackPrompt = false,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -86,6 +91,17 @@ export function EvaluatorDashboardClient({
   const [showOnlyPending, setShowOnlyPending] = useState(false);
   const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(!hasSeenOnboarding);
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [currentFeedback, setCurrentFeedback] = useState<EvaluatorFeedback | null>(feedbackRecord);
+
+  // Auto-show feedback popup once onboarding is dismissed and feedback not yet seen
+  useEffect(() => {
+    if (!hasSeenOnboarding) return; // wait for onboarding to complete first
+    if (!hasSeenFeedbackPrompt) {
+      setIsFeedbackOpen(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // All Proposals Pagination & Filter state
   const [allProposalsPage, setAllProposalsPage] = useState(1);
@@ -760,8 +776,21 @@ export function EvaluatorDashboardClient({
         </div>
         <OnboardingModal 
           isOpen={isOnboardingOpen} 
-          onClose={() => setIsOnboardingOpen(false)} 
+          onClose={() => {
+            setIsOnboardingOpen(false);
+            // Show feedback after onboarding completes if not yet seen
+            if (!hasSeenFeedbackPrompt) {
+              setTimeout(() => setIsFeedbackOpen(true), 400);
+            }
+          }} 
           currentUserId={currentUserId}
+        />
+        <FeedbackModal
+          isOpen={isFeedbackOpen}
+          onClose={() => setIsFeedbackOpen(false)}
+          currentUserId={currentUserId}
+          existingFeedback={currentFeedback}
+          onSubmitted={(fb) => setCurrentFeedback(fb)}
         />
       </div>
     </TooltipProvider>

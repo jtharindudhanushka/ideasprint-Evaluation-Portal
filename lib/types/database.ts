@@ -126,3 +126,19 @@ export interface EvaluationOverallNote {
   updated_at: string;
 }
 
+export type EaseOfUse =
+  | "very_difficult"
+  | "difficult"
+  | "neutral"
+  | "easy"
+  | "very_easy";
+
+export interface EvaluatorFeedback {
+  id: string;
+  evaluator_id: string;
+  overall_rating: number | null;
+  ease_of_use: EaseOfUse | null;
+  comments: string | null;
+  submitted_at: string;
+  has_seen_prompt: boolean;
+}

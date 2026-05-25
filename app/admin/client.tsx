@@ -28,7 +28,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { LayoutDashboard, Trophy, Clock, FileText, Search, ExternalLink, BarChart } from "lucide-react";
+import { LayoutDashboard, Trophy, Clock, FileText, Search, ExternalLink, BarChart, Download, Loader2 } from "lucide-react";
 import type { Proposal, Profile, ProposalAssignment } from "@/lib/types/database";
 
 interface Props {
@@ -44,8 +44,32 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
   const [searchQuery, setSearchQuery] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDownloadingBackup, setIsDownloadingBackup] = useState(false);
   const router = useRouter();
   const supabase = createClient();
+
+  const handleDownloadBackup = async () => {
+    setIsDownloadingBackup(true);
+    try {
+      const res = await fetch("/api/download-backup");
+      if (!res.ok) throw new Error("Backup failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const date = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `ideasprint-backup-${date}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Backup downloaded successfully");
+    } catch {
+      toast.error("Failed to download backup");
+    } finally {
+      setIsDownloadingBackup(false);
+    }
+  };
 
   const totalProposals = proposals.length;
   const gradedCount = proposals.filter((p) => p.is_graded).length;
@@ -309,13 +333,42 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-6)" }}>
       {/* Page heading */}
-      <div>
-        <h2 style={{ fontFamily: "var(--bw-font-heading)", fontSize: "var(--bw-fs-h1)", fontWeight: "var(--bw-fw-bold)" as any, lineHeight: "var(--bw-lh-tight)" }}>
-          Dashboard
-        </h2>
-        <p style={{ marginTop: "var(--bw-space-2)", fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-secondary)" }}>
-          Overview of all ideasprint 2026 proposals
-        </p>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "var(--bw-space-4)" }}>
+        <div>
+          <h2 style={{ fontFamily: "var(--bw-font-heading)", fontSize: "var(--bw-fs-h1)", fontWeight: "var(--bw-fw-bold)" as any, lineHeight: "var(--bw-lh-tight)" }}>
+            Dashboard
+          </h2>
+          <p style={{ marginTop: "var(--bw-space-2)", fontSize: "var(--bw-fs-sm)", color: "var(--bw-content-secondary)" }}>
+            Overview of all ideasprint 2026 proposals
+          </p>
+        </div>
+        <button
+          onClick={handleDownloadBackup}
+          disabled={isDownloadingBackup}
+          className="bw-button"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--bw-space-2)",
+            padding: "10px 18px",
+            background: "var(--bw-bg-primary)",
+            border: "1px solid var(--bw-border)",
+            borderRadius: "var(--bw-radius-pill)",
+            fontSize: "var(--bw-fs-sm)",
+            fontWeight: "var(--bw-fw-medium)" as any,
+            color: "var(--bw-content-primary)",
+            cursor: isDownloadingBackup ? "not-allowed" : "pointer",
+            opacity: isDownloadingBackup ? 0.6 : 1,
+            fontFamily: "var(--bw-font-body)",
+            transition: "all var(--bw-duration-normal)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {isDownloadingBackup
+            ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
+            : <Download size={14} />}
+          {isDownloadingBackup ? "Preparing..." : "Download Backup"}
+        </button>
       </div>
 
       {/* Stats Cards */}

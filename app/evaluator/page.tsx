@@ -17,7 +17,8 @@ export default async function EvaluatorDashboardPage() {
     { data: profiles },
     { data: assignments },
     { data: settings },
-    { data: myOverallNotesRows }
+    { data: myOverallNotesRows },
+    { data: feedbackRow }
   ] = await Promise.all([
     supabase
       .from("proposals")
@@ -51,7 +52,12 @@ export default async function EvaluatorDashboardPage() {
     supabase
       .from("evaluation_overall_notes")
       .select("proposal_id, notes")
+      .eq("evaluator_id", user.id),
+    supabase
+      .from("evaluator_feedback")
+      .select("*")
       .eq("evaluator_id", user.id)
+      .maybeSingle(),
   ]);
 
   let daysLeft = "14";
@@ -145,6 +151,8 @@ export default async function EvaluatorDashboardPage() {
       daysLeft={daysLeft}
       hasSeenOnboarding={profiles?.find(p => p.id === user!.id)?.has_seen_onboarding ?? true}
       myOverallNotes={myOverallNotes}
+      feedbackRecord={feedbackRow ?? null}
+      hasSeenFeedbackPrompt={feedbackRow?.has_seen_prompt ?? false}
     />
   );
 }

@@ -11,6 +11,7 @@ import {
   Menu,
   X,
   Settings,
+  MessageSquare,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -18,6 +19,7 @@ const NAV_ITEMS = [
   { href: "/admin/evaluators", label: "Evaluators", icon: Users },
   { href: "/admin/proposals", label: "Proposals", icon: Upload },
   { href: "/admin/assignments", label: "Assignments", icon: ClipboardList },
+  { href: "/admin/feedback", label: "Feedback", icon: MessageSquare },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
