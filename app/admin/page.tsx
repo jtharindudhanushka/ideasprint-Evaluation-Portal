@@ -4,12 +4,15 @@ import { AdminDashboardClient } from "./client";
 export default async function AdminDashboardPage() {
   const supabase = await createClient();
 
+  const { data: { user } } = await supabase.auth.getUser();
+
   const [
     { data: proposals },
     { data: evaluations },
     { data: evaluators },
     { data: assignments },
-    { data: overallNotes }
+    { data: overallNotes },
+    { data: lockSetting }
   ] = await Promise.all([
     supabase
       .from("proposals")
@@ -37,8 +40,15 @@ export default async function AdminDashboardPage() {
       .select("*"),
     supabase
       .from("evaluation_overall_notes")
-      .select("proposal_id, evaluator_id, notes")
+      .select("proposal_id, evaluator_id, notes"),
+    supabase
+      .from("system_settings")
+      .select("value")
+      .eq("key", "evaluations_locked")
+      .single(),
   ]);
+
+  const evaluationsLocked = lockSetting?.value === '"true"' || lockSetting?.value === true || String(lockSetting?.value) === 'true' || String(lockSetting?.value) === '"true"';
 
   // Group evaluations by proposal_id, storing individual scores per evaluator
   const breakdownData: Record<string, any[]> = {};
@@ -108,6 +118,8 @@ export default async function AdminDashboardPage() {
       evaluatorByProposal={evaluatorByProposal}
       assignments={assignments ?? []}
       overallNotesByProposal={overallNotesByProposal}
+      evaluationsLocked={evaluationsLocked}
+      currentUserId={user?.id ?? ""}
     />
   );
 }

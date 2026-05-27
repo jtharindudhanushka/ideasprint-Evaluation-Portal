@@ -28,7 +28,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { LayoutDashboard, Trophy, Clock, FileText, Search, ExternalLink, BarChart, Download, Loader2 } from "lucide-react";
+import { LayoutDashboard, Trophy, Clock, FileText, Search, ExternalLink, BarChart, Download, Loader2, Lock, Unlock, FileDown } from "lucide-react";
+import Link from "next/link";
 import type { Proposal, Profile, ProposalAssignment } from "@/lib/types/database";
 
 interface Props {
@@ -38,13 +39,17 @@ interface Props {
   evaluatorByProposal?: Record<string, string[]>;
   assignments?: ProposalAssignment[];
   overallNotesByProposal?: Record<string, Record<string, string>>;
+  evaluationsLocked?: boolean;
+  currentUserId?: string;
 }
 
-export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators = [], evaluatorByProposal = {}, assignments = [], overallNotesByProposal = {} }: Props) {
+export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators = [], evaluatorByProposal = {}, assignments = [], overallNotesByProposal = {}, evaluationsLocked = false, currentUserId = "" }: Props) {
   const [searchQuery, setSearchQuery] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDownloadingBackup, setIsDownloadingBackup] = useState(false);
+  const [isTogglingLock, setIsTogglingLock] = useState(false);
+  const [lockState, setLockState] = useState(evaluationsLocked);
   const router = useRouter();
   const supabase = createClient();
 
@@ -69,6 +74,55 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
     } finally {
       setIsDownloadingBackup(false);
     }
+  };
+
+  const handleToggleLock = async () => {
+    setIsTogglingLock(true);
+    const newValue = !lockState;
+    try {
+      const res = await fetch("/api/system-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "evaluations_locked", value: String(newValue) }),
+      });
+      if (!res.ok) throw new Error("Failed to update setting");
+      setLockState(newValue);
+      toast.success(newValue ? "Evaluations locked" : "Evaluations unlocked");
+      router.refresh();
+    } catch {
+      toast.error("Failed to update lock setting");
+    } finally {
+      setIsTogglingLock(false);
+    }
+  };
+
+  const handleDownloadTop15 = () => {
+    const top15 = proposals
+      .filter((p) => p.is_graded)
+      .sort((a, b) => b.total_score - a.total_score)
+      .slice(0, 15);
+
+    const headers = ["Rank", "Team Name", "Product Name", "Score", "Proposal Link", "Pitch Video Link"];
+    const rows = top15.map((p, i) => [
+      i + 1,
+      `"${p.team_name.replace(/"/g, '""')}"`,
+      `"${p.product_name.replace(/"/g, '""')}"`,
+      p.total_score,
+      p.proposal_url || "",
+      p.video_url || "",
+    ]);
+
+    const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ideasprint-2026-top15.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success("Top 15 CSV downloaded");
   };
 
   const totalProposals = proposals.length;
@@ -307,7 +361,7 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
               );
             })()}
 
-            {/* Links */}
+            {/* Links + Admin Edit */}
             <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-2)", borderTop: "1px solid var(--bw-border)", paddingTop: "var(--bw-space-4)" }}>
               {proposal.proposal_url && (
                 <a href={proposal.proposal_url} target="_blank" rel="noopener noreferrer">
@@ -323,6 +377,12 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
                   </Button>
                 </a>
               )}
+              {/* Admin can always edit any evaluation — bypasses lock */}
+              <Link href={`/evaluator/evaluate/${proposal.id}?admin_override=1`}>
+                <Button variant="primary" size="sm" style={{ width: "100%", justifyContent: "flex-start", marginTop: "var(--bw-space-2)" }}>
+                  <FileText size={14} style={{ marginRight: 8 }} /> Edit Grading (Admin)
+                </Button>
+              </Link>
             </div>
           </div>
         </DialogContent>
@@ -342,33 +402,91 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
             Overview of all ideasprint 2026 proposals
           </p>
         </div>
-        <button
-          onClick={handleDownloadBackup}
-          disabled={isDownloadingBackup}
-          className="bw-button"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--bw-space-2)",
-            padding: "10px 18px",
-            background: "var(--bw-bg-primary)",
-            border: "1px solid var(--bw-border)",
-            borderRadius: "var(--bw-radius-pill)",
-            fontSize: "var(--bw-fs-sm)",
-            fontWeight: "var(--bw-fw-medium)" as any,
-            color: "var(--bw-content-primary)",
-            cursor: isDownloadingBackup ? "not-allowed" : "pointer",
-            opacity: isDownloadingBackup ? 0.6 : 1,
-            fontFamily: "var(--bw-font-body)",
-            transition: "all var(--bw-duration-normal)",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {isDownloadingBackup
-            ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
-            : <Download size={14} />}
-          {isDownloadingBackup ? "Preparing..." : "Download Backup"}
-        </button>
+        {/* Header action buttons */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--bw-space-3)", alignItems: "center" }}>
+          {/* Lock / Unlock toggle */}
+          <button
+            onClick={handleToggleLock}
+            disabled={isTogglingLock}
+            className="bw-button"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--bw-space-2)",
+              padding: "10px 18px",
+              background: lockState ? "rgba(245,158,11,0.1)" : "var(--bw-bg-primary)",
+              border: lockState ? "1px solid rgba(245,158,11,0.4)" : "1px solid var(--bw-border)",
+              borderRadius: "var(--bw-radius-pill)",
+              fontSize: "var(--bw-fs-sm)",
+              fontWeight: "var(--bw-fw-medium)" as any,
+              color: lockState ? "#d97706" : "var(--bw-content-primary)",
+              cursor: isTogglingLock ? "not-allowed" : "pointer",
+              opacity: isTogglingLock ? 0.6 : 1,
+              fontFamily: "var(--bw-font-body)",
+              transition: "all var(--bw-duration-normal)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {isTogglingLock
+              ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
+              : lockState ? <Unlock size={14} /> : <Lock size={14} />}
+            {isTogglingLock ? "Updating..." : lockState ? "Unlock Evaluations" : "Lock Evaluations"}
+          </button>
+
+          {/* Top 15 CSV download */}
+          <button
+            onClick={handleDownloadTop15}
+            className="bw-button"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--bw-space-2)",
+              padding: "10px 18px",
+              background: "var(--bw-bg-primary)",
+              border: "1px solid var(--bw-border)",
+              borderRadius: "var(--bw-radius-pill)",
+              fontSize: "var(--bw-fs-sm)",
+              fontWeight: "var(--bw-fw-medium)" as any,
+              color: "var(--bw-content-primary)",
+              cursor: "pointer",
+              fontFamily: "var(--bw-font-body)",
+              transition: "all var(--bw-duration-normal)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <FileDown size={14} />
+            Top 15 CSV
+          </button>
+
+          {/* Full JSON backup */}
+          <button
+            onClick={handleDownloadBackup}
+            disabled={isDownloadingBackup}
+            className="bw-button"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--bw-space-2)",
+              padding: "10px 18px",
+              background: "var(--bw-bg-primary)",
+              border: "1px solid var(--bw-border)",
+              borderRadius: "var(--bw-radius-pill)",
+              fontSize: "var(--bw-fs-sm)",
+              fontWeight: "var(--bw-fw-medium)" as any,
+              color: "var(--bw-content-primary)",
+              cursor: isDownloadingBackup ? "not-allowed" : "pointer",
+              opacity: isDownloadingBackup ? 0.6 : 1,
+              fontFamily: "var(--bw-font-body)",
+              transition: "all var(--bw-duration-normal)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {isDownloadingBackup
+              ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
+              : <Download size={14} />}
+            {isDownloadingBackup ? "Preparing..." : "Download Backup"}
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}

@@ -18,7 +18,8 @@ export default async function EvaluatorDashboardPage() {
     { data: assignments },
     { data: settings },
     { data: myOverallNotesRows },
-    { data: feedbackRow }
+    { data: feedbackRow },
+    { data: lockSetting }
   ] = await Promise.all([
     supabase
       .from("proposals")
@@ -58,7 +59,17 @@ export default async function EvaluatorDashboardPage() {
       .select("*")
       .eq("evaluator_id", user.id)
       .maybeSingle(),
+    supabase
+      .from("system_settings")
+      .select("value")
+      .eq("key", "evaluations_locked")
+      .single(),
   ]);
+
+  const evaluationsLocked = (() => {
+    const raw = (lockSetting as any)?.value;
+    return raw === '"true"' || raw === true || String(raw) === 'true' || String(raw) === '"true"';
+  })();
 
   let daysLeft = "14";
   if (settings?.value) {
@@ -153,6 +164,7 @@ export default async function EvaluatorDashboardPage() {
       myOverallNotes={myOverallNotes}
       feedbackRecord={feedbackRow ?? null}
       hasSeenFeedbackPrompt={feedbackRow?.has_seen_prompt ?? false}
+      evaluationsLocked={evaluationsLocked}
     />
   );
 }

@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import { OnboardingModal } from "@/components/onboarding-modal";
 import { FeedbackModal } from "@/components/feedback-modal";
+import { EvaluationLockedDialog } from "@/components/evaluation-locked-dialog";
 import type { Proposal, Profile, ProposalAssignment, EvaluatorFeedback } from "@/lib/types/database";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -67,6 +68,7 @@ interface Props {
   myOverallNotes?: Record<string, string>;
   feedbackRecord?: EvaluatorFeedback | null;
   hasSeenFeedbackPrompt?: boolean;
+  evaluationsLocked?: boolean;
 }
 
 export function EvaluatorDashboardClient({
@@ -83,6 +85,7 @@ export function EvaluatorDashboardClient({
   myOverallNotes = {},
   feedbackRecord = null,
   hasSeenFeedbackPrompt = false,
+  evaluationsLocked = false,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -93,6 +96,7 @@ export function EvaluatorDashboardClient({
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(!hasSeenOnboarding);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [currentFeedback, setCurrentFeedback] = useState<EvaluatorFeedback | null>(feedbackRecord);
+  const [showLockedDialog, setShowLockedDialog] = useState(false);
 
   // Auto-show feedback popup once onboarding is dismissed and feedback not yet seen
   useEffect(() => {
@@ -111,13 +115,21 @@ export function EvaluatorDashboardClient({
   const itemsPerPage = 10;
 
   useEffect(() => {
-    if (searchParams.get("error") === "not_assigned") {
+    const error = searchParams.get("error");
+    if (error === "not_assigned") {
       toast.error("You are not assigned to evaluate that proposal.");
+      router.replace("/evaluator");
+    } else if (error === "locked") {
+      toast.error("Evaluations are locked. The deadline has passed.");
       router.replace("/evaluator");
     }
   }, [searchParams, router]);
 
   const handleEvaluate = (proposalId: string) => {
+    if (evaluationsLocked) {
+      setShowLockedDialog(true);
+      return;
+    }
     setNavigatingTo(proposalId);
     router.push(`/evaluator/evaluate/${proposalId}`);
   };
@@ -350,7 +362,7 @@ export function EvaluatorDashboardClient({
                   </Button>
                 </a>
               )}
-              {isGradedByMe && (
+              {isGradedByMe && !evaluationsLocked && (
                 <Link href={`/evaluator/evaluate/${proposal.id}`}>
                   <Button size="sm" style={{ width: "100%", justifyContent: "flex-start", marginTop: "var(--bw-space-2)" }}>
                     <Edit size={14} style={{ marginRight: 8 }} /> Edit Grading
@@ -571,6 +583,15 @@ export function EvaluatorDashboardClient({
                             <TableCell style={{ textAlign: "right", paddingRight: "var(--bw-space-6)" }}>
                               {isGradedByMe ? (
                                 renderBreakdownDialog(proposal, "Details", true)
+                              ) : evaluationsLocked ? (
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => setShowLockedDialog(true)}
+                                  style={{ opacity: 0.7 }}
+                                >
+                                  🔒 Locked
+                                </Button>
                               ) : (
                                 <Button
                                   variant="secondary"
@@ -791,6 +812,10 @@ export function EvaluatorDashboardClient({
           currentUserId={currentUserId}
           existingFeedback={currentFeedback}
           onSubmitted={(fb) => setCurrentFeedback(fb)}
+        />
+        <EvaluationLockedDialog
+          open={showLockedDialog}
+          onClose={() => setShowLockedDialog(false)}
         />
       </div>
     </TooltipProvider>

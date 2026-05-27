@@ -36,11 +36,13 @@ import {
   Edit,
   Save,
   Video,
+  Lock,
 } from "lucide-react";
 import { timeAgo } from "@/lib/utils";
 import type { Proposal, RubricSection, Evaluation, PdfAnnotation, VideoComment } from "@/lib/types/database";
 import { PdfAnnotationPanel } from "@/components/pdf-annotation-panel";
 import { VideoPanel } from "@/components/video-panel";
+import { EvaluationLockedDialog } from "@/components/evaluation-locked-dialog";
 
 interface Props {
   proposal: Proposal;
@@ -52,6 +54,8 @@ interface Props {
   videoComments?: VideoComment[];
   evaluatorName?: string;
   initialOverallNotes?: string;
+  evaluationsLocked?: boolean;
+  isAdmin?: boolean;
 }
 
 const getBandColor = (text: string) => {
@@ -73,14 +77,14 @@ export function EvaluationViewClient({
   videoComments = [],
   evaluatorName = "",
   initialOverallNotes = "",
+  evaluationsLocked = false,
+  isAdmin = false,
 }: Props) {
   const supabase = createClient();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [scores, setScores] = useState<Record<string, number>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
-  // Initialise from DB-saved overall note; bleed-through detection may
-  // override this if the table row doesn't exist yet for old submissions.
   const [globalNotes, setGlobalNotes] = useState(initialOverallNotes);
 
   const isAlreadyGraded = existingEvaluations.length > 0;
@@ -89,12 +93,20 @@ export function EvaluationViewClient({
   const [showEditConfirm, setShowEditConfirm] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [pulseEdit, setPulseEdit] = useState(false);
+  const [showLockedDialog, setShowLockedDialog] = useState(false);
+
+  // Effective lock: locked for evaluators, but admins always bypass
+  const effectivelyLocked = evaluationsLocked && !isAdmin;
 
   const handleLockedInteraction = () => {
     if (!isEditing && isAlreadyGraded) {
-      toast.info("Click 'Edit Grading' below to unlock scoring");
-      setPulseEdit(true);
-      setTimeout(() => setPulseEdit(false), 2000);
+      if (effectivelyLocked) {
+        setShowLockedDialog(true);
+      } else {
+        toast.info("Click 'Edit Grading' below to unlock scoring");
+        setPulseEdit(true);
+        setTimeout(() => setPulseEdit(false), 2000);
+      }
     }
   };
 
@@ -372,6 +384,7 @@ export function EvaluationViewClient({
   const RubricForm = RubricFormContent();
 
   return (
+    <>
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--bw-space-4)", maxWidth: hasMedia ? 1600 : 1024, margin: "0 auto", paddingBottom: "calc(96px + env(safe-area-inset-bottom))", position: "relative" }}>
       {/* Header */}
       <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: "var(--bw-space-4)" }}>
@@ -392,6 +405,15 @@ export function EvaluationViewClient({
               {proposal.product_name}
             </h2>
             {!isEditing && <Badge variant="secondary">Read Only</Badge>}
+            {effectivelyLocked && (
+              <Badge variant="warning" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <Lock size={10} />
+                Locked
+              </Badge>
+            )}
+            {isAdmin && evaluationsLocked && (
+              <Badge variant="positive" style={{ fontSize: "10px" }}>Admin Override</Badge>
+            )}
           </div>
           <p style={{ color: "var(--bw-content-secondary)", fontSize: "var(--bw-fs-sm)" }}>by {proposal.team_name}</p>
           {proposal.description && (
@@ -543,15 +565,29 @@ export function EvaluationViewClient({
 
           {!isEditing ? (
             <>
-              <Button
-                variant="primary"
-                size="sm"
-                style={{ minWidth: 160, transition: "all 0.2s ease", transform: pulseEdit ? "scale(1.05)" : "scale(1)", boxShadow: pulseEdit ? "0 0 0 4px var(--bw-primary-light, rgba(0,0,0,0.1))" : "none" }}
-                onClick={() => setShowEditConfirm(true)}
-              >
-                <Edit size={14} style={{ marginRight: 8 }} />
-                Edit Grading
-              </Button>
+              {effectivelyLocked ? (
+                // Evaluations are locked — show locked button that opens popup
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  style={{ minWidth: 160, opacity: 0.7 }}
+                  onClick={() => setShowLockedDialog(true)}
+                >
+                  <Lock size={14} style={{ marginRight: 8 }} />
+                  Results Locked
+                </Button>
+              ) : (
+                // Not locked — show Edit Grading as normal
+                <Button
+                  variant="primary"
+                  size="sm"
+                  style={{ minWidth: 160, transition: "all 0.2s ease", transform: pulseEdit ? "scale(1.05)" : "scale(1)", boxShadow: pulseEdit ? "0 0 0 4px var(--bw-primary-light, rgba(0,0,0,0.1))" : "none" }}
+                  onClick={() => setShowEditConfirm(true)}
+                >
+                  <Edit size={14} style={{ marginRight: 8 }} />
+                  Edit Grading
+                </Button>
+              )}
               <AlertDialog open={showEditConfirm} onOpenChange={setShowEditConfirm}>
                 <AlertDialogContent>
                   <AlertDialogHeader>
@@ -574,22 +610,24 @@ export function EvaluationViewClient({
             </>
           ) : (
             <>
-              <Button
-                variant="primary"
-                size="sm"
-                style={{ minWidth: 160 }}
-                disabled={loading}
-                onClick={() => setShowSubmitConfirm(true)}
-              >
-                {loading ? (
-                  <Loader2 size={14} style={{ marginRight: 8, animation: "spin 1s linear infinite" }} />
-                ) : isAlreadyGraded ? (
-                  <Save size={14} style={{ marginRight: 8 }} />
-                ) : (
-                  <CheckCircle2 size={14} style={{ marginRight: 8 }} />
-                )}
-                {loading ? "Saving..." : isAlreadyGraded ? "Save Changes" : "Submit Evaluation"}
-              </Button>
+              {!effectivelyLocked && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  style={{ minWidth: 160 }}
+                  disabled={loading}
+                  onClick={() => setShowSubmitConfirm(true)}
+                >
+                  {loading ? (
+                    <Loader2 size={14} style={{ marginRight: 8, animation: "spin 1s linear infinite" }} />
+                  ) : isAlreadyGraded ? (
+                    <Save size={14} style={{ marginRight: 8 }} />
+                  ) : (
+                    <CheckCircle2 size={14} style={{ marginRight: 8 }} />
+                  )}
+                  {loading ? "Saving..." : isAlreadyGraded ? "Save Changes" : "Submit Evaluation"}
+                </Button>
+              )}
               <AlertDialog open={showSubmitConfirm} onOpenChange={setShowSubmitConfirm}>
                 <AlertDialogContent>
                   <AlertDialogHeader>
@@ -614,5 +652,7 @@ export function EvaluationViewClient({
         </div>
       </div>
     </div>
+    <EvaluationLockedDialog open={showLockedDialog} onClose={() => setShowLockedDialog(false)} />
+    </>
   );
 }

@@ -34,7 +34,8 @@ export default async function EvaluationPage({ params }: PageProps) {
     { data: annotations },
     { data: videoComments },
     { data: profile },
-    { data: overallNote }
+    { data: overallNote },
+    { data: lockSetting },
   ] = await Promise.all([
     supabase.from("proposals").select("*").eq("id", id).single(),
     supabase.from("proposal_assignments").select("*").eq("proposal_id", id).eq("evaluator_id", user.id).single(),
@@ -42,16 +43,29 @@ export default async function EvaluationPage({ params }: PageProps) {
     supabase.from("evaluations").select("*").eq("proposal_id", id).eq("evaluator_id", user.id),
     supabase.from("pdf_annotations").select("*").eq("proposal_id", id),
     supabase.from("video_comments").select("*").eq("proposal_id", id),
-    supabase.from("profiles").select("full_name").eq("id", user.id).single(),
-    supabase.from("evaluation_overall_notes").select("notes").eq("proposal_id", id).eq("evaluator_id", user.id).maybeSingle()
+    supabase.from("profiles").select("full_name, role").eq("id", user.id).single(),
+    supabase.from("evaluation_overall_notes").select("notes").eq("proposal_id", id).eq("evaluator_id", user.id).maybeSingle(),
+    supabase.from("system_settings").select("value").eq("key", "evaluations_locked").single(),
   ]);
+
+  const isAdmin = profile?.role === "admin";
+  const evaluationsLocked = (() => {
+    const raw = (lockSetting as any)?.value;
+    return raw === '"true"' || raw === true || String(raw) === 'true' || String(raw) === '"true"';
+  })();
 
   if (!proposal) redirect("/evaluator");
 
   // HARD SERVER-SIDE GUARD: Only the assigned evaluator can access this page
-  if (!assignment) {
+  // Admins bypass the assignment check (they can edit any proposal via admin_override)
+  if (!assignment && !isAdmin) {
     // Redirect back with a message via search param (displayed as toast on evaluator page)
     redirect("/evaluator?error=not_assigned");
+  }
+
+  // DEADLINE LOCK GUARD: evaluators cannot edit after lock; admins bypass
+  if (evaluationsLocked && !isAdmin) {
+    redirect("/evaluator?error=locked");
   }
 
   // Sort criteria within each section
@@ -74,6 +88,8 @@ export default async function EvaluationPage({ params }: PageProps) {
       videoComments={videoComments ?? []}
       evaluatorName={profile?.full_name ?? ""}
       initialOverallNotes={overallNote?.notes ?? ""}
+      evaluationsLocked={evaluationsLocked}
+      isAdmin={isAdmin}
     />
   );
 }
