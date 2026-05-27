@@ -15,7 +15,7 @@ interface Props {
 }
 
 export function EvaluationLockedDialog({ open, onClose }: Props) {
-  const WHATSAPP_NUMBER = "94762195950"; // +94762195950 without leading +
+  const WHATSAPP_NUMBER = "94762195995"; // +94762195995 without leading +
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
