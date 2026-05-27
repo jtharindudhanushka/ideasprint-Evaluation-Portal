@@ -28,7 +28,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { LayoutDashboard, Trophy, Clock, FileText, Search, ExternalLink, BarChart, Download, Loader2, Lock, Unlock, FileDown } from "lucide-react";
+import { LayoutDashboard, Trophy, Clock, FileText, Search, ExternalLink, BarChart, Download, Loader2, Lock, Unlock, FileDown, MessageSquare } from "lucide-react";
 import Link from "next/link";
 import type { Proposal, Profile, ProposalAssignment } from "@/lib/types/database";
 
@@ -123,6 +123,127 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
     a.remove();
     URL.revokeObjectURL(url);
     toast.success("Top 15 CSV downloaded");
+  };
+
+  const handleDownloadComments = () => {
+    // Helper: escape a value for CSV (wraps in quotes, escapes internal quotes)
+    const esc = (v: string | number | null | undefined) => {
+      const s = String(v ?? "").replace(/"/g, '""');
+      return `"${s}"`;
+    };
+
+    const headers = [
+      "Rank",
+      "Team Name",
+      "Product Name",
+      "Total Score",
+      "Evaluator",
+      "Comment Type",      // "Overall" | criterion name
+      "Criterion",         // blank for Overall rows
+      "Max Score",         // blank for Overall rows
+      "Evaluator Score",   // blank for Overall rows
+      "Comment",
+    ];
+
+    const rows: string[][] = [];
+
+    // Sort proposals: graded first (score desc), then ungraded alphabetically
+    const sorted = [...proposals].sort((a, b) => {
+      if (a.is_graded && b.is_graded) return b.total_score - a.total_score;
+      if (a.is_graded) return -1;
+      if (b.is_graded) return 1;
+      return a.team_name.localeCompare(b.team_name);
+    });
+
+    let rank = 0;
+
+    for (const proposal of sorted) {
+      const assigneeIds = assignments
+        .filter((a) => a.proposal_id === proposal.id)
+        .map((a) => a.evaluator_id);
+
+      if (assigneeIds.length === 0) continue;
+      if (proposal.is_graded) rank++;
+
+      const rankVal = proposal.is_graded ? rank : "";
+      const scoreVal = proposal.is_graded ? proposal.total_score : "";
+
+      const criteriaData = (breakdownData[proposal.id] || []) as {
+        name: string;
+        max_score: number;
+        scores: Record<string, number>;
+        notes: Record<string, string>;
+      }[];
+
+      for (const evalId of assigneeIds) {
+        const evalName = evaluatorMap.get(evalId) || "Unknown";
+
+        // ── Overall comment ───────────────────────────────────────────────
+        const overall = overallNotesByProposal[proposal.id]?.[evalId]?.trim();
+        if (overall) {
+          rows.push([
+            esc(rankVal),
+            esc(proposal.team_name),
+            esc(proposal.product_name),
+            esc(scoreVal),
+            esc(evalName),
+            esc("Overall"),
+            esc(""),          // Criterion
+            esc(""),          // Max Score
+            esc(""),          // Evaluator Score
+            esc(overall),
+          ]);
+        }
+
+        // ── Criterion-level comments ──────────────────────────────────────
+        // Dedup bleed-through: same note on >1 criterion = old global note bug
+        const noteFreq: Record<string, number> = {};
+        criteriaData.forEach((c) => {
+          const note = (c.notes as Record<string, string>)?.[evalId]?.trim();
+          if (note) noteFreq[note] = (noteFreq[note] ?? 0) + 1;
+        });
+        const bleedText = Object.entries(noteFreq).find(([, cnt]) => cnt > 1)?.[0];
+
+        for (const c of criteriaData) {
+          const note = (c.notes as Record<string, string>)?.[evalId]?.trim();
+          if (!note || note === bleedText) continue;
+          const evalScore = c.scores?.[evalId] !== undefined ? c.scores[evalId] : "";
+          rows.push([
+            esc(rankVal),
+            esc(proposal.team_name),
+            esc(proposal.product_name),
+            esc(scoreVal),
+            esc(evalName),
+            esc("Criterion"),
+            esc(c.name),
+            esc(c.max_score),
+            esc(evalScore),
+            esc(note),
+          ]);
+        }
+      }
+    }
+
+    if (rows.length === 0) {
+      toast.info("No evaluator comments found yet.");
+      return;
+    }
+
+    const csv = [
+      headers.map(esc).join(","),
+      ...rows.map((r) => r.join(",")),
+    ].join("\n");
+
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }); // BOM for Excel
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ideasprint-2026-evaluator-comments.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success(`Comments CSV downloaded — ${rows.length} rows`);
   };
 
   const totalProposals = proposals.length;
@@ -456,6 +577,31 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
           >
             <FileDown size={14} />
             Top 15 CSV
+          </button>
+
+          {/* Evaluator Comments CSV */}
+          <button
+            onClick={handleDownloadComments}
+            className="bw-button"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--bw-space-2)",
+              padding: "10px 18px",
+              background: "var(--bw-bg-primary)",
+              border: "1px solid var(--bw-border)",
+              borderRadius: "var(--bw-radius-pill)",
+              fontSize: "var(--bw-fs-sm)",
+              fontWeight: "var(--bw-fw-medium)" as any,
+              color: "var(--bw-content-primary)",
+              cursor: "pointer",
+              fontFamily: "var(--bw-font-body)",
+              transition: "all var(--bw-duration-normal)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <MessageSquare size={14} />
+            Comments CSV
           </button>
 
           {/* Full JSON backup */}
