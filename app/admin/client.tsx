@@ -258,35 +258,20 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
     toast.success(`Comments CSV downloaded — ${rows.length} rows`);
   };
 
-  const handleDownloadEmailResultsCSV = () => {
-    // ── CSV escape helper: always wrap in double quotes, escape internal quotes ──
+  // ── Shared CSV builder for email results (used by both selected & rejected) ──
+  const buildEmailResultsCSV = (subset: Proposal[]): string => {
+    // CSV escape helper: always wrap in double quotes, escape internal quotes
     const esc = (v: string | number | null | undefined): string => {
       const s = String(v ?? "").replace(/"/g, '""');
       return `"${s}"`;
     };
 
-    // Only graded proposals, sorted by score descending
-    const graded = [...proposals]
-      .filter((p) => p.is_graded)
-      .sort((a, b) => b.total_score - a.total_score);
-
-    if (graded.length === 0) {
-      toast.info("No graded proposals to export.");
-      return;
-    }
-
-    if (rubricSections.length === 0) {
-      toast.error("Rubric data not loaded — please refresh the page.");
-      return;
-    }
-
-    // ── Build header row ─────────────────────────────────────────────────────
+    // ── Header row ────────────────────────────────────────────────────
     const headers: string[] = [
       "Team Name",
       "Product Name",
       "Overall Score (max 100)",
     ];
-
     for (const section of rubricSections) {
       for (const criterion of section.rubric_criteria) {
         headers.push(`${criterion.name} (max ${criterion.max_score})`);
@@ -294,14 +279,13 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
       }
       headers.push(`${section.name} Total (max ${section.total_marks})`);
     }
-
     headers.push("Overall Comment — Evaluator 01");
     headers.push("Overall Comment — Evaluator 02");
 
-    // ── Build data rows ───────────────────────────────────────────────────────
+    // ── Data rows ──────────────────────────────────────────────────
     const rows: string[] = [];
 
-    for (const proposal of graded) {
+    for (const proposal of subset) {
       const assigneeIds = assignments
         .filter((a) => a.proposal_id === proposal.id)
         .map((a) => a.evaluator_id);
@@ -313,14 +297,10 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
         notes: Record<string, string>;
       }[];
 
-      // Fast lookup: criterion name → its data
-      const criteriaByName = new Map(
-        criteriaData.map((c) => [c.name, c])
-      );
+      const criteriaByName = new Map(criteriaData.map((c) => [c.name, c]));
 
-      // Pre-compute bleed-through note per evaluator for this proposal.
-      // A note appearing on more than 1 criterion = old global-note bug.
-      // Suppress it from per-criterion comment cells; surface in overall instead.
+      // Pre-compute bleed-through note per evaluator.
+      // A note appearing on >1 criterion = old global-note bug; suppress per-criterion.
       const bleedByEvaluator = new Map<string, string | undefined>();
       for (const evalId of assigneeIds) {
         const freq: Record<string, number> = {};
@@ -328,8 +308,10 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
           const note = c.notes?.[evalId]?.trim();
           if (note) freq[note] = (freq[note] ?? 0) + 1;
         });
-        const bleedText = Object.entries(freq).find(([, cnt]) => cnt > 1)?.[0];
-        bleedByEvaluator.set(evalId, bleedText);
+        bleedByEvaluator.set(
+          evalId,
+          Object.entries(freq).find(([, cnt]) => cnt > 1)?.[0]
+        );
       }
 
       const rowValues: string[] = [
@@ -345,7 +327,7 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
         for (const criterion of section.rubric_criteria) {
           const cd = criteriaByName.get(criterion.name);
 
-          // ── Score: average across both evaluators ─────────────────────────
+          // Average score across both evaluators
           let avgScore: number | string = "";
           if (cd) {
             const scores = assigneeIds
@@ -362,15 +344,13 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
           }
           rowValues.push(esc(avgScore));
 
-          // ── Comments: combine non-bleed notes from each evaluator ─────────
+          // Combined criterion comments (skip bleed-through text)
           const commentParts: string[] = [];
           assigneeIds.forEach((evalId, idx) => {
             const bleedText = bleedByEvaluator.get(evalId);
             const note = cd?.notes?.[evalId]?.trim() ?? "";
-            // Skip if blank or matches the bleed-through text
             if (!note || note === bleedText) return;
-            const label = `Evaluator 0${idx + 1}`;
-            commentParts.push(`${label}: ${note}`);
+            commentParts.push(`Evaluator 0${idx + 1}: ${note}`);
           });
           rowValues.push(esc(commentParts.join(" | ")));
         }
@@ -378,41 +358,92 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
         rowValues.push(esc(hasSectionScores ? sectionTotal : ""));
       }
 
-      // ── Overall comments (up to 2 evaluators, anonymous labels) ──────────
+      // Overall comments — Evaluator 01 & 02 (anonymous labels)
       for (let i = 0; i < 2; i++) {
         const evalId = assigneeIds[i];
-        if (!evalId) {
-          rowValues.push(esc(""));
-          continue;
-        }
-
-        // Source of truth: evaluation_overall_notes table
+        if (!evalId) { rowValues.push(esc("")); continue; }
         const fromTable = overallNotesByProposal[proposal.id]?.[evalId]?.trim() ?? "";
-        // Fallback: if the bleed-through text exists and no table note, use it
         const bleedText = bleedByEvaluator.get(evalId) ?? "";
-        const finalOverall = fromTable || bleedText;
-
-        rowValues.push(esc(finalOverall));
+        rowValues.push(esc(fromTable || bleedText));
       }
 
       rows.push(rowValues.join(","));
     }
 
     const headerRow = headers.map(esc).join(",");
-    const csv = [headerRow, ...rows].join("\n");
+    return [headerRow, ...rows].join("\n");
+  };
 
-    // UTF-8 BOM so Excel opens it without garbling characters
+  // ── Download Selected (Top 15) ────────────────────────────────────────────
+  const handleDownloadSelectedCSV = () => {
+    if (rubricSections.length === 0) {
+      toast.error("Rubric data not loaded — please refresh the page.");
+      return;
+    }
+    // Stable sort: score desc, then team name asc as tiebreaker
+    const graded = [...proposals]
+      .filter((p) => p.is_graded)
+      .sort((a, b) =>
+        b.total_score - a.total_score || a.team_name.localeCompare(b.team_name)
+      );
+    const selected = graded.slice(0, 15);
+    if (selected.length === 0) { toast.info("No graded proposals to export."); return; }
+
+    // Warn if there is a tie straddling the rank-15/16 boundary
+    const lastSelected = selected[selected.length - 1];
+    const firstRejected = graded[15];
+    if (firstRejected && lastSelected.total_score === firstRejected.total_score) {
+      toast.warning(
+        `⚠️ Tie at rank 15/16: "${lastSelected.team_name}" and "${firstRejected.team_name}" both scored ${lastSelected.total_score}. Teams are split alphabetically — review manually.`,
+        { duration: 8000 }
+      );
+    }
+
+    const csv = buildEmailResultsCSV(selected);
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    const date = new Date().toISOString().slice(0, 10);
     a.href = url;
-    a.download = `ideasprint-2026-results-${date}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    a.download = `ideasprint-2026-selected-top15-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
-    toast.success(`Results CSV downloaded — ${graded.length} proposals`);
+    toast.success(`Selected CSV downloaded — ${selected.length} proposals`);
+  };
+
+  // ── Download Rejected (Rank 16+) ──────────────────────────────────────────
+  const handleDownloadRejectedCSV = () => {
+    if (rubricSections.length === 0) {
+      toast.error("Rubric data not loaded — please refresh the page.");
+      return;
+    }
+    // Same stable sort — must match selected to keep splits consistent
+    const graded = [...proposals]
+      .filter((p) => p.is_graded)
+      .sort((a, b) =>
+        b.total_score - a.total_score || a.team_name.localeCompare(b.team_name)
+      );
+    const rejected = graded.slice(15);
+    if (rejected.length === 0) { toast.info("No non-selected proposals to export."); return; }
+
+    // Warn if tie at boundary (mirror of selected handler)
+    const lastSelected = graded[14];
+    const firstRejected = rejected[0];
+    if (lastSelected && firstRejected && lastSelected.total_score === firstRejected.total_score) {
+      toast.warning(
+        `⚠️ Tie at rank 15/16: "${lastSelected.team_name}" and "${firstRejected.team_name}" both scored ${lastSelected.total_score}. Teams are split alphabetically — review manually.`,
+        { duration: 8000 }
+      );
+    }
+
+    const csv = buildEmailResultsCSV(rejected);
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ideasprint-2026-rejected-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    toast.success(`Rejected CSV downloaded — ${rejected.length} proposals`);
   };
 
   const totalProposals = proposals.length;
@@ -773,21 +804,21 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
             Comments CSV
           </button>
 
-          {/* Email Results CSV */}
+          {/* Selected (Top 15) Email CSV */}
           <button
-            onClick={handleDownloadEmailResultsCSV}
+            onClick={handleDownloadSelectedCSV}
             className="bw-button"
             style={{
               display: "flex",
               alignItems: "center",
               gap: "var(--bw-space-2)",
               padding: "10px 18px",
-              background: "rgba(99,102,241,0.08)",
-              border: "1px solid rgba(99,102,241,0.3)",
+              background: "rgba(34,197,94,0.08)",
+              border: "1px solid rgba(34,197,94,0.3)",
               borderRadius: "var(--bw-radius-pill)",
               fontSize: "var(--bw-fs-sm)",
               fontWeight: "var(--bw-fw-medium)" as any,
-              color: "#818cf8",
+              color: "#4ade80",
               cursor: "pointer",
               fontFamily: "var(--bw-font-body)",
               transition: "all var(--bw-duration-normal)",
@@ -795,7 +826,32 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
             }}
           >
             <Mail size={14} />
-            Email Results CSV
+            Selected CSV
+          </button>
+
+          {/* Rejected (Rank 16+) Email CSV */}
+          <button
+            onClick={handleDownloadRejectedCSV}
+            className="bw-button"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--bw-space-2)",
+              padding: "10px 18px",
+              background: "rgba(239,68,68,0.08)",
+              border: "1px solid rgba(239,68,68,0.3)",
+              borderRadius: "var(--bw-radius-pill)",
+              fontSize: "var(--bw-fs-sm)",
+              fontWeight: "var(--bw-fw-medium)" as any,
+              color: "#f87171",
+              cursor: "pointer",
+              fontFamily: "var(--bw-font-body)",
+              transition: "all var(--bw-duration-normal)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <Mail size={14} />
+            Rejected CSV
           </button>
 
           {/* Full JSON backup */}
