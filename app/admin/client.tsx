@@ -314,11 +314,18 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
         );
       }
 
-      const rowValues: string[] = [
+      // rowValues built in two passes:
+      // pass 1 — identity cols (overall score filled in after section loop)
+      // pass 2 — per-criterion cols, section totals
+      // This lets us derive the overall from the criteria, not from the DB integer.
+      const identityValues: string[] = [
         esc(proposal.team_name),
         esc(proposal.product_name),
-        esc(proposal.total_score),
+        // overall score placeholder — replaced below
       ];
+      const criterionValues: string[] = [];
+      let overallTotal = 0;
+      let hasAnyScore = false;
 
       for (const section of rubricSections) {
         let sectionTotal = 0;
@@ -327,22 +334,22 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
         for (const criterion of section.rubric_criteria) {
           const cd = criteriaByName.get(criterion.name);
 
-          // Average score across both evaluators
+          // Exact (unrounded) average across both evaluators
           let avgScore: number | string = "";
           if (cd) {
             const scores = assigneeIds
               .map((id) => cd.scores[id])
               .filter((s): s is number => s !== undefined);
             if (scores.length > 0) {
-              const avg = Math.round(
-                scores.reduce((a, b) => a + b, 0) / scores.length
-              );
-              avgScore = avg;
-              sectionTotal += avg;
+              const exactAvg = scores.reduce((a, b) => a + b, 0) / scores.length;
+              avgScore = parseFloat(exactAvg.toFixed(1)); // display: e.g. 6.5
+              sectionTotal += exactAvg;                   // accumulate exact value
+              overallTotal += exactAvg;                   // track grand total
               hasSectionScores = true;
+              hasAnyScore = true;
             }
           }
-          rowValues.push(esc(avgScore));
+          criterionValues.push(esc(avgScore));
 
           // Combined criterion comments (skip bleed-through text)
           const commentParts: string[] = [];
@@ -352,22 +359,34 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
             if (!note || note === bleedText) return;
             commentParts.push(`Evaluator 0${idx + 1}: ${note}`);
           });
-          rowValues.push(esc(commentParts.join(" | ")));
+          criterionValues.push(esc(commentParts.join(" | ")));
         }
 
-        rowValues.push(esc(hasSectionScores ? sectionTotal : ""));
+        // Section total: exact sum → display to 1dp
+        criterionValues.push(
+          esc(hasSectionScores ? parseFloat(sectionTotal.toFixed(1)) : "")
+        );
       }
+
+      // Overall score = derived from criteria (fully consistent, self-verifying)
+      const overallDisplay = hasAnyScore ? parseFloat(overallTotal.toFixed(1)) : "";
+      const rowValues = [
+        ...identityValues,
+        esc(overallDisplay),
+        ...criterionValues,
+      ];
 
       // Overall comments — Evaluator 01 & 02 (anonymous labels)
+      const overallComments: string[] = [];
       for (let i = 0; i < 2; i++) {
         const evalId = assigneeIds[i];
-        if (!evalId) { rowValues.push(esc("")); continue; }
+        if (!evalId) { overallComments.push(esc("")); continue; }
         const fromTable = overallNotesByProposal[proposal.id]?.[evalId]?.trim() ?? "";
         const bleedText = bleedByEvaluator.get(evalId) ?? "";
-        rowValues.push(esc(fromTable || bleedText));
+        overallComments.push(esc(fromTable || bleedText));
       }
 
-      rows.push(rowValues.join(","));
+      rows.push([...rowValues, ...overallComments].join(","));
     }
 
     const headerRow = headers.map(esc).join(",");
