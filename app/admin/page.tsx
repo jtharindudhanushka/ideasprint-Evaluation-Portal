@@ -12,7 +12,8 @@ export default async function AdminDashboardPage() {
     { data: evaluators },
     { data: assignments },
     { data: overallNotes },
-    { data: lockSetting }
+    { data: lockSetting },
+    { data: rubricSectionsRaw },
   ] = await Promise.all([
     supabase
       .from("proposals")
@@ -46,6 +47,10 @@ export default async function AdminDashboardPage() {
       .select("value")
       .eq("key", "evaluations_locked")
       .single(),
+    supabase
+      .from("rubric_sections")
+      .select("id, name, total_marks, order_index, rubric_criteria(id, name, max_score, order_index)")
+      .order("order_index", { ascending: true }),
   ]);
 
   const evaluationsLocked = lockSetting?.value === '"true"' || lockSetting?.value === true || String(lockSetting?.value) === 'true' || String(lockSetting?.value) === '"true"';
@@ -110,6 +115,15 @@ export default async function AdminDashboardPage() {
     }
   }
 
+  // Sort criteria within each section by order_index (client-side, since Supabase
+  // doesn't guarantee nested relation order without a separate .order() call)
+  const rubricSections = (rubricSectionsRaw ?? []).map((section) => ({
+    ...section,
+    rubric_criteria: [...(section.rubric_criteria ?? [])].sort(
+      (a, b) => a.order_index - b.order_index
+    ),
+  }));
+
   return (
     <AdminDashboardClient
       proposals={proposals ?? []}
@@ -120,6 +134,7 @@ export default async function AdminDashboardPage() {
       overallNotesByProposal={overallNotesByProposal}
       evaluationsLocked={evaluationsLocked}
       currentUserId={user?.id ?? ""}
+      rubricSections={rubricSections}
     />
   );
 }

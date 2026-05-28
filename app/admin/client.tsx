@@ -28,7 +28,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { LayoutDashboard, Trophy, Clock, FileText, Search, ExternalLink, BarChart, Download, Loader2, Lock, Unlock, FileDown, MessageSquare } from "lucide-react";
+import { LayoutDashboard, Trophy, Clock, FileText, Search, ExternalLink, BarChart, Download, Loader2, Lock, Unlock, FileDown, MessageSquare, Mail } from "lucide-react";
 import Link from "next/link";
 import type { Proposal, Profile, ProposalAssignment } from "@/lib/types/database";
 
@@ -41,9 +41,21 @@ interface Props {
   overallNotesByProposal?: Record<string, Record<string, string>>;
   evaluationsLocked?: boolean;
   currentUserId?: string;
+  rubricSections?: Array<{
+    id: string;
+    name: string;
+    total_marks: number;
+    order_index: number;
+    rubric_criteria: Array<{
+      id: string;
+      name: string;
+      max_score: number;
+      order_index: number;
+    }>;
+  }>;
 }
 
-export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators = [], evaluatorByProposal = {}, assignments = [], overallNotesByProposal = {}, evaluationsLocked = false, currentUserId = "" }: Props) {
+export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators = [], evaluatorByProposal = {}, assignments = [], overallNotesByProposal = {}, evaluationsLocked = false, currentUserId = "", rubricSections = [] }: Props) {
   const [searchQuery, setSearchQuery] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -244,6 +256,163 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
     a.remove();
     URL.revokeObjectURL(url);
     toast.success(`Comments CSV downloaded — ${rows.length} rows`);
+  };
+
+  const handleDownloadEmailResultsCSV = () => {
+    // ── CSV escape helper: always wrap in double quotes, escape internal quotes ──
+    const esc = (v: string | number | null | undefined): string => {
+      const s = String(v ?? "").replace(/"/g, '""');
+      return `"${s}"`;
+    };
+
+    // Only graded proposals, sorted by score descending
+    const graded = [...proposals]
+      .filter((p) => p.is_graded)
+      .sort((a, b) => b.total_score - a.total_score);
+
+    if (graded.length === 0) {
+      toast.info("No graded proposals to export.");
+      return;
+    }
+
+    if (rubricSections.length === 0) {
+      toast.error("Rubric data not loaded — please refresh the page.");
+      return;
+    }
+
+    // ── Build header row ─────────────────────────────────────────────────────
+    const headers: string[] = [
+      "Team Name",
+      "Product Name",
+      "Overall Score (max 100)",
+    ];
+
+    for (const section of rubricSections) {
+      for (const criterion of section.rubric_criteria) {
+        headers.push(`${criterion.name} (max ${criterion.max_score})`);
+        headers.push(`${criterion.name} — Comments`);
+      }
+      headers.push(`${section.name} Total (max ${section.total_marks})`);
+    }
+
+    headers.push("Overall Comment — Evaluator 01");
+    headers.push("Overall Comment — Evaluator 02");
+
+    // ── Build data rows ───────────────────────────────────────────────────────
+    const rows: string[] = [];
+
+    for (const proposal of graded) {
+      const assigneeIds = assignments
+        .filter((a) => a.proposal_id === proposal.id)
+        .map((a) => a.evaluator_id);
+
+      const criteriaData = (breakdownData[proposal.id] || []) as {
+        name: string;
+        max_score: number;
+        scores: Record<string, number>;
+        notes: Record<string, string>;
+      }[];
+
+      // Fast lookup: criterion name → its data
+      const criteriaByName = new Map(
+        criteriaData.map((c) => [c.name, c])
+      );
+
+      // Pre-compute bleed-through note per evaluator for this proposal.
+      // A note appearing on more than 1 criterion = old global-note bug.
+      // Suppress it from per-criterion comment cells; surface in overall instead.
+      const bleedByEvaluator = new Map<string, string | undefined>();
+      for (const evalId of assigneeIds) {
+        const freq: Record<string, number> = {};
+        criteriaData.forEach((c) => {
+          const note = c.notes?.[evalId]?.trim();
+          if (note) freq[note] = (freq[note] ?? 0) + 1;
+        });
+        const bleedText = Object.entries(freq).find(([, cnt]) => cnt > 1)?.[0];
+        bleedByEvaluator.set(evalId, bleedText);
+      }
+
+      const rowValues: string[] = [
+        esc(proposal.team_name),
+        esc(proposal.product_name),
+        esc(proposal.total_score),
+      ];
+
+      for (const section of rubricSections) {
+        let sectionTotal = 0;
+        let hasSectionScores = false;
+
+        for (const criterion of section.rubric_criteria) {
+          const cd = criteriaByName.get(criterion.name);
+
+          // ── Score: average across both evaluators ─────────────────────────
+          let avgScore: number | string = "";
+          if (cd) {
+            const scores = assigneeIds
+              .map((id) => cd.scores[id])
+              .filter((s): s is number => s !== undefined);
+            if (scores.length > 0) {
+              const avg = Math.round(
+                scores.reduce((a, b) => a + b, 0) / scores.length
+              );
+              avgScore = avg;
+              sectionTotal += avg;
+              hasSectionScores = true;
+            }
+          }
+          rowValues.push(esc(avgScore));
+
+          // ── Comments: combine non-bleed notes from each evaluator ─────────
+          const commentParts: string[] = [];
+          assigneeIds.forEach((evalId, idx) => {
+            const bleedText = bleedByEvaluator.get(evalId);
+            const note = cd?.notes?.[evalId]?.trim() ?? "";
+            // Skip if blank or matches the bleed-through text
+            if (!note || note === bleedText) return;
+            const label = `Evaluator 0${idx + 1}`;
+            commentParts.push(`${label}: ${note}`);
+          });
+          rowValues.push(esc(commentParts.join(" | ")));
+        }
+
+        rowValues.push(esc(hasSectionScores ? sectionTotal : ""));
+      }
+
+      // ── Overall comments (up to 2 evaluators, anonymous labels) ──────────
+      for (let i = 0; i < 2; i++) {
+        const evalId = assigneeIds[i];
+        if (!evalId) {
+          rowValues.push(esc(""));
+          continue;
+        }
+
+        // Source of truth: evaluation_overall_notes table
+        const fromTable = overallNotesByProposal[proposal.id]?.[evalId]?.trim() ?? "";
+        // Fallback: if the bleed-through text exists and no table note, use it
+        const bleedText = bleedByEvaluator.get(evalId) ?? "";
+        const finalOverall = fromTable || bleedText;
+
+        rowValues.push(esc(finalOverall));
+      }
+
+      rows.push(rowValues.join(","));
+    }
+
+    const headerRow = headers.map(esc).join(",");
+    const csv = [headerRow, ...rows].join("\n");
+
+    // UTF-8 BOM so Excel opens it without garbling characters
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `ideasprint-2026-results-${date}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success(`Results CSV downloaded — ${graded.length} proposals`);
   };
 
   const totalProposals = proposals.length;
@@ -602,6 +771,31 @@ export function AdminDashboardClient({ proposals, breakdownData = {}, evaluators
           >
             <MessageSquare size={14} />
             Comments CSV
+          </button>
+
+          {/* Email Results CSV */}
+          <button
+            onClick={handleDownloadEmailResultsCSV}
+            className="bw-button"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--bw-space-2)",
+              padding: "10px 18px",
+              background: "rgba(99,102,241,0.08)",
+              border: "1px solid rgba(99,102,241,0.3)",
+              borderRadius: "var(--bw-radius-pill)",
+              fontSize: "var(--bw-fs-sm)",
+              fontWeight: "var(--bw-fw-medium)" as any,
+              color: "#818cf8",
+              cursor: "pointer",
+              fontFamily: "var(--bw-font-body)",
+              transition: "all var(--bw-duration-normal)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <Mail size={14} />
+            Email Results CSV
           </button>
 
           {/* Full JSON backup */}
